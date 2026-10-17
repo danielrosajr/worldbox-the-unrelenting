@@ -32,5 +32,20 @@
   "StuckThresholdSeconds": "Tempo ate resgate (segundos reais)",
   "StuckThresholdSeconds Description": "Tempo sem progresso significativo antes de tentar outro corpo. Medido em segundos reais, nao acelera com 5x.",
   "VerbosePursuitLogs": "Logs detalhados da IA",
-  "VerbosePursuitLogs Description": "Registra interrupcoes extras de comportamento. Progresso e resgate ja aparecem no log mesmo desligado."
+  "VerbosePursuitLogs Description": "Registra interrupcoes extras de comportamento. Progresso e resgate ja aparecem no log mesmo desligado.",
+  "AntiKite": "Chega de Brincadeira — Anti-Circulos",
+  "EnableAntiKite": "Punir fuga em circulos",
+  "EnableAntiKite Description": "Se a vitima ficar circulando perto da entidade por muito tempo, um breve surto de velocidade extrema ocorre. Ligado por padrao.",
+  "AntiKiteRadius": "Distancia considerada proxima (tiles)",
+  "AntiKiteRadius Description": "A vitima deve permanecer perto do mesmo perseguidor. Breves saidas de menos de 2 segundos sao toleradas.",
+  "AntiKiteSeconds": "Tempo proximo necessario (segundos reais)",
+  "AntiKiteSeconds Description": "Tempo perto do mesmo perseguidor antes de avaliar movimento circular. Proximidade isolada nao ativa o castigo.",
+  "AntiKiteBoostDuration": "Duracao da corrida sobrenatural (segundos)",
+  "AntiKiteBoostDuration Description": "Duracao em segundos reais de um bonus temporario enorme de velocidade (+75 no atributo). Depois restaura o modo anterior.",
+  "AntiKiteCooldown": "Intervalo entre castigos (segundos reais)",
+  "AntiKiteCooldown Description": "Tempo minimo apos uma corrida antes que a entidade possa aplicar o castigo novamente ao mesmo corpo e vitima.",
+  "VerboseAntiKiteLogs": "Logs detalhados do anti-circulos (debug)",
+  "VerboseAntiKiteLogs Description": "Registra distancia e metricas de movimento circular a cada cinco segundos enquanto o alvo esta perto.",
+  "trait_ArvakTheUnrelenting_PunishingRush": "Perseguicao Sobrenatural",
+  "trait_ArvakTheUnrelenting_PunishingRush_info": "A entidade recebeu uma velocidade aterrorizante por alguns instantes."
 }

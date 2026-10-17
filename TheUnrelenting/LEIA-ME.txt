@@ -1,19 +1,12 @@
-The Unrelenting v0.11.1 — Relentless Pursuit
+The Unrelenting v0.11.2 - No More Games
 
-Atualize substituindo a pasta inteira TheUnrelenting na pasta Mods.
+Ao circular perto de um perseguidor por muito tempo, a vitima pode provocar uma corrida sobrenatural.
+Padrão: distancia 15 tiles, 30s reais, boost 6s e cooldown 90s.
 
-Novo painel: NeoModLoader > Mods > The Unrelenting > Configuracao > IA de Perseguicao.
+Instale a pasta TheUnrelenting em Mods (raiz do WorldBox); feche o jogo antes de substituir.
+Para testar, diminua Temporizador AntiKite para 8s e ligue os logs detalhados.
+Acompanhe logs com grep ANTI-KITE em Player.log.
 
-Novidades: atualizacao de destino conforme distancia, reset periodico de tarefas normais,
-troca de hospedeiro quando ficar sem progresso por ~18 segundos reais.
-
-Travessia de mar: o mod NAO obriga animais terrestres a nadar. Precisa de
-um hospedeiro elegivel mais perto da vitima, idealmente na ilha de destino.
-
-Use mundo descartavel. Se falhar, volte a v0.11.0.
-
-Comando:
-grep -nE 'PURSUIT|PROGRESSO CADEIA|WITNESS TRANSMISSAO|EXECUCAO CONFIRMADA|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
-
-GitHub: substitua os arquivos da versao anterior.
-Commit: feat: add adaptive pursuit AI and stalled-host rescue
+GitHub: substitua arquivos anteriores pelos desta versao.
+Commit: feat: punish circling the Haunted pursuer with a supernatural sprint
+Tag: v0.11.2 (publicar apos testes).

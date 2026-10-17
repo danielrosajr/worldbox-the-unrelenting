@@ -32,5 +32,20 @@
   "StuckThresholdSeconds": "Stalled pursuit threshold (real seconds)",
   "StuckThresholdSeconds Description": "Time without significant progress before attempting an alternative host. Measured in real seconds; game speed has no effect.",
   "VerbosePursuitLogs": "Detailed pursuit AI logs",
-  "VerbosePursuitLogs Description": "Logs extra behavior overrides. Core progress and rescue events are logged even when this is off."
+  "VerbosePursuitLogs Description": "Logs extra behavior overrides. Core progress and rescue events are logged even when this is off.",
+  "AntiKite": "No More Games — Anti-Kiting",
+  "EnableAntiKite": "Punish circling the entity",
+  "EnableAntiKite Description": "If a victim circles a nearby pursuer for too long instead of fleeing, trigger an extraordinary short speed boost. Enabled by default.",
+  "AntiKiteRadius": "Nearby distance (tiles)",
+  "AntiKiteRadius Description": "The victim must remain this close to the current pursuer. Brief exits shorter than 2 seconds are tolerated.",
+  "AntiKiteSeconds": "Required nearby time (real seconds)",
+  "AntiKiteSeconds Description": "Time spent close to the same pursuer before a circling pattern can trigger the punishment. Proximity alone is not enough.",
+  "AntiKiteBoostDuration": "Punishment sprint duration (seconds)",
+  "AntiKiteBoostDuration Description": "Real-time duration of a massive temporary speed bonus (+75 speed stat). The unit resumes its prior movement mode afterwards.",
+  "AntiKiteCooldown": "Sprint cooldown (real seconds)",
+  "AntiKiteCooldown Description": "Minimum wait after the speed boost ends before another punishment can trigger for this body and victim.",
+  "VerboseAntiKiteLogs": "Detailed anti-kiting logs (debug)",
+  "VerboseAntiKiteLogs Description": "Log distance and circular movement metrics every five seconds while close to the entity.",
+  "trait_ArvakTheUnrelenting_PunishingRush": "Unnatural Pursuit",
+  "trait_ArvakTheUnrelenting_PunishingRush_info": "The entity is moving with terrifying, unnatural speed for a short time."
 }

@@ -82,5 +82,45 @@
       "Type": "SWITCH",
       "BoolVal": false
     }
+  ],
+  "AntiKite": [
+    {
+      "Id": "EnableAntiKite",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "AntiKiteRadius",
+      "Type": "SLIDER",
+      "FloatVal": 15.0,
+      "MinFloatVal": 5.0,
+      "MaxFloatVal": 30.0
+    },
+    {
+      "Id": "AntiKiteSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 30.0,
+      "MinFloatVal": 5.0,
+      "MaxFloatVal": 120.0
+    },
+    {
+      "Id": "AntiKiteBoostDuration",
+      "Type": "SLIDER",
+      "FloatVal": 6.0,
+      "MinFloatVal": 2.0,
+      "MaxFloatVal": 15.0
+    },
+    {
+      "Id": "AntiKiteCooldown",
+      "Type": "SLIDER",
+      "FloatVal": 90.0,
+      "MinFloatVal": 20.0,
+      "MaxFloatVal": 240.0
+    },
+    {
+      "Id": "VerboseAntiKiteLogs",
+      "Type": "SWITCH",
+      "BoolVal": false
+    }
   ]
 }

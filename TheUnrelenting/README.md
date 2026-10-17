@@ -1,50 +1,51 @@
-# The Unrelenting — v0.11.1 Relentless Pursuit
+# The Unrelenting v0.11.2 — No More Games
 
-WorldBox 0.51.2 build 719 • NeoModLoader • Ubuntu/Linux.
+Mod de terror para WorldBox 0.51.2 (build 719) usando NeoModLoader.
 
-Built on the tested v0.11.0 The Witness code. Keeps Haunted, Origins, recurring origin attempts, one-entity victim queue, body hopping, randomized speed, sudden rush, probable-killer detection and experimental killer transmission.
+## Novo nesta versao
 
-## New in v0.11.1
+O perseguidor pune tentativas de correr em circulos ao redor dele.
 
-- **Adaptive pursuit**: movement orders every 1.6 s when >50 tiles away, 0.8 s at 15–50, 0.35 s at 5–15, and 0.18 s at <=5. Entire-world/kill-counter scan stays once every 2 real seconds to reduce CPU usage.
-- **Anti-distraction**: `cancelAllBeh()` once every 4.5 real seconds followed by `goTo(target.current_tile, false)` to counter sleep/normal activities. May interfere with some native AI actions.
-- **Stall rescue**: after 18 real seconds without a 1+ tile improvement, try jumping into another eligible existing body at least 4 tiles closer to the victim. Prefer bodies 6–22 tiles from the victim. This does NOT make terrestrial creatures swim and does not guarantee inter-island crossing without a body on the other side.
-- New NML settings group **Pursuit AI** for toggles, timeout, extra logs. Defaults ON for adaptive movement, anti-distraction and rescue.
-- No global debug/pathfinding setting changes; no teleports of an existing unit; no extra trait markers.
+- Mecanica **No More Games**, habilitada por padrao, mas configuravel no menu do NML.
+- O alvo deve ficar a ate **15 tiles** por **30 segundos reais** perto do mesmo hospedeiro.
+- Para evitar falsos positivos, o mod tambem exige que a vitima tenha **andado ao menos 12 tiles nos ultimos 12 segundos** e tenha **baixo deslocamento liquido** (deslocamento <= 78% do caminho percorrido). Isso identifica circulos/ziguezagues, nao apenas ficar parado.
+- Ao detectar provocacao, recebe a trait temporaria `ArvakTheUnrelenting_PunishingRush`, com **+75 no atributo speed**, por **6 segundos reais** (configuravel).
+- Ao fim, o mod tenta restaurar a velocidade anterior e so pode disparar novamente depois de **90 segundos reais** (configuravel).
+- Sair da zona por mais de 2 segundos reinicia a contagem. Trocar de hospedeiro ou vitima tambem reinicia. Trocas normais de corpo sao adiadas temporariamente se a vitima estiver perto, para permitir chegar aos 30s; resgate por travamento continua habilitado.
+- O boost e cancelado/limpo ao abandonar o corpo ou terminar a cadeia.
+- **Nao e teleporte**, apenas aumenta velocidade. Navegacao e obstaculos dependem da IA do WorldBox.
+- A trait privada pode aparecer temporariamente na ficha durante a arrancada; ela nao aparece no editor de traits. Remocao e testada no `Player.log`.
 
-## Install
+## Instalacao (Linux)
 
-Close WorldBox, back up any valued world and replace your existing `Mods/TheUnrelenting` folder with the included folder. Use a disposable world for this experimental version.
-
-## Test A — follow moving target
-
-Apply Haunted to one unit on the same landmass as several animals. Observe movement and check log for `PROGRESSO CADEIA`. The log now includes `PROXIMA_CORRECAO_SEG`.
-
-## Test B — ocean
-
-Create two islands. Place the target Haunted on one; on the other add a candidate host (e.g. sheep). **Place a third compatible unmarked body on the target's island** to make a water-escape via possession possible. After about 18 real seconds without progress, check for `PURSUIT RESGATE POR TROCA DE CORPO!`. Without any eligible target-side body, it is expected that the entity may remain unable to reach the target. This is a known limitation, not success.
-
-## Test C — sleep
-
-Keep the entity's host alive for long enough to see whether native sleep interrupts pursuit. `Override normal activities` can be toggled off for comparison.
-
-## Diagnostics
+1. Feche o jogo.
+2. Substitua a pasta `TheUnrelenting` na pasta `Mods` do NeoModLoader pelo conteudo do ZIP.
+3. Entre no mundo descartavel. Selecione Mods > The Unrelenting > Configuracao > `AntiKite`.
+4. Para testar rapidamente, ajuste `Tempo proximo necessario` para 8 segundos e deixe o raio em 15 tiles.
+5. Aplique Haunted em uma unidade controlavel e mova-a repetidamente em circulos na frente do perseguidor. Ele precisa permanecer proximo **e a unidade realmente se mover em ciclos**.
+6. Cheque os logs:
 
 ```bash
-grep -nE 'PURSUIT|PROGRESSO CADEIA|WITNESS TRANSMISSAO|CONTATO COM A VITIMA|EXECUCAO CONFIRMADA|error CS|Failed to compile|ERRO NA PERSEGUICAO' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
+grep -nE 'ANTI-KITE|JUMPSCARE|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 100
 ```
 
-`PURSUIT SEM CAMINHO / SEM RESGATE DISPONIVEL!` indicates possible water/obstacle/stalled pursuit with no available alternative body; it does not prove water is the cause. `PURSUIT RESGATE POR TROCA DE CORPO!` confirms a fallback reassignment and reports previous/new distance.
+Procure `ANTI-KITE PROVOCACAO DETECTADA`, `ANTI-KITE JUMPSCARE INICIADO` e `ANTI-KITE JUMPSCARE ENCERRADO`.
+Para logs de movimento durante o teste, ligue `VerboseAntiKiteLogs` no menu (deixe desligado no jogo normal).
 
-## Notes and limitations
+**Atencao**: experimento ainda nao testado dentro do WorldBox. A sintaxe foi baseada no padrao do mod que funcionou nas versoes anteriores e no registro de traits com `base_stats["speed"]` do guia de modding. Teste apenas em mundo descartavel.
 
-- This code has not been compiled inside WorldBox in this environment; this is an experimental build.
-- The rescue heuristic uses distances and evidence of stalled progress rather than guaranteed landmass/path connectivity. An eligible body on a closer *different* island might still fail and require another hop.
-- Continuous rapid `goTo()` calls can affect game navigation; test with low population before using on larger maps.
-- The mod does not truly make land animals swim. A host already across a sea with **no additional eligible body** on the victim side can remain stranded.
-- Do not rely on in-memory state across world reload; previous limitation still applies.
+## Continuam presentes
+
+- Trait Haunted, Origins automatico opcional e recorrente
+- Selecao da entidade, body-hopping e fila de vitimas
+- Speed modes slow/normal/fast e arrancadas normais aleatorias
+- AI adaptativa e resgate de hospedeiro travado
+- Witness: identificacao conservadora e transmissao opcional ao assassino provavel
 
 ## GitHub
 
-Replace all files with the release package. Commit: `feat: add adaptive pursuit AI and stalled-host rescue`
-Version: `v0.11.1`. Roll back to `v0.11.0` if necessary.
+Substitua `Main.cs`, `mod.json`, `default_config.json`, `Locales/*`, `README.md` e `LEIA-ME.txt`.
+
+Commit: `feat: punish circling the Haunted pursuer with a supernatural sprint`
+
+Tag: `v0.11.2` (release somente apos teste).

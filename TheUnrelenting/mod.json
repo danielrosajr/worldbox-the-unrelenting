@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.11.1",
-  "description": "Relentless Pursuit: adaptive tracking, AI behavior overrides, and optional stuck-body rescue; The Witness preserved.",
+  "version": "0.11.2",
+  "description": "The Unrelenting: Haunted pursuit, Witness and anti-kiting punishment sprint",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []

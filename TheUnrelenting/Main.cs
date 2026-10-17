@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.11.1 - Relentless Pursuit (The Witness preservado): observacao conservadora da morte de Haunted e transmissao experimental opcional.
+    // v0.11.2 - No More Games (The Witness e Relentless Pursuit preservados): observacao conservadora da morte de Haunted e transmissao experimental opcional.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -14,6 +14,10 @@ namespace Arvak.TheUnrelenting
     {
         public const string TraitId = "ArvakTheUnrelenting_Haunted";
         public const string GroupId = "ArvakTheUnrelenting_Group";
+        private const string AntiKiteBoostTraitId = "ArvakTheUnrelenting_PunishingRush";
+        // Trait temporaria e nao selecionavel. Registrada apos AssetManager.traits.add().
+        // Atributo fixo proposital para nao mutar o mesmo asset global em runtime.
+        private const float PunishingRushSpeedBonus = 75f;
 
         private const float ScanInterval = 2f;
         private const float ContactDistance = 1.5f;
@@ -144,6 +148,51 @@ namespace Arvak.TheUnrelenting
         private Actor _trackedTarget;
         private Actor _trackedHost;
 
+        // NO MORE GAMES: o jogador que fica circulando um perseguidor muito
+        // proximo por bastante tempo provoca uma corrida sobrenatural.
+        // Exige caminho percorrido + baixa eficiencia de fuga, nao apenas tempo.
+        private const string AntiKiteConfigGroup = "AntiKite";
+        private const string CfgAntiKiteEnabled = "EnableAntiKite";
+        private const string CfgAntiKiteRadius = "AntiKiteRadius";
+        private const string CfgAntiKiteSeconds = "AntiKiteSeconds";
+        private const string CfgAntiKiteDuration = "AntiKiteBoostDuration";
+        private const string CfgAntiKiteCooldown = "AntiKiteCooldown";
+        private const string CfgAntiKiteVerbose = "VerboseAntiKiteLogs";
+        private struct AntiKiteOptions
+        {
+            public bool Enabled;
+            public float Radius;
+            public float Seconds;
+            public float Duration;
+            public float Cooldown;
+            public bool Verbose;
+        }
+        private struct KiteSample
+        {
+            public float Time;
+            public Vector2 Position;
+            public KiteSample(float time, Vector2 position) { Time = time; Position = position; }
+        }
+        private readonly List<KiteSample> _kiteSamples = new List<KiteSample>();
+        private AntiKiteOptions _antiKiteOptions = new AntiKiteOptions
+        {
+            Enabled = true, Radius = 15f, Seconds = 30f, Duration = 6f, Cooldown = 90f, Verbose = false
+        };
+        private Actor _kiteHost;
+        private Actor _kiteTarget;
+        private float _kiteNearSince = -1f;
+        private float _kiteAwaySince = -1f;
+        private float _kiteNextSampleAt;
+        private float _kiteCooldownUntil;
+        private float _kiteBoostUntil;
+        private bool _kiteBoostActive;
+        private bool _kiteSlowRemoved;
+        private bool _kiteFastRemoved;
+        private bool _kiteCleanupWarned;
+        private bool _antiKiteConfigWarned;
+        private float _nextKiteDebugLogAt;
+
+
         // The Witness: nao adivinha o autor de uma morte por mera proximidade.
         // Cruza (1) uma vitima HAUNTED que realmente morreu, (2) aumento
         // exatamente de 1 no contador nativo de abates e (3) proximidade.
@@ -189,8 +238,24 @@ namespace Arvak.TheUnrelenting
                 can_be_cured = false,
                 needs_to_be_explored = false
             });
+            // Trait privada de velocidade extrema. Nao e um poder editavel;
+            // o mod a adiciona e remove apenas durante o castigo de proximidade.
+            ActorTrait rush = new ActorTrait
+            {
+                id = AntiKiteBoostTraitId,
+                group_id = GroupId,
+                path_icon = "ui/icons/neomodloader",
+                can_be_given = false,
+                can_be_removed = false,
+                can_be_cured = false,
+                needs_to_be_explored = false
+            };
+            AssetManager.traits.add(rush);
+            rush.base_stats["speed"] = PunishingRushSpeedBonus;
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.11.1 RELENTLESS PURSUIT + THE WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.11.2 NO MORE GAMES + RELENTLESS PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: ANTI-KITE PREPARADO! BONUS_SPEED=" + PunishingRushSpeedBonus.ToString("F0") +
+                " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s; CONFIGURAVEL NO NML.");
             LogInfo("THE UNRELENTING: WITNESS: rastreio de mortes ativo; transmissao a assassino PROVAVEL desligada por padrao.");
             LogInfo("THE UNRELENTING: PURSUIT AI: precisao por proximidade e resgate por possessao configuraveis.");
             LogInfo("THE UNRELENTING: ORIGINS: menu do NML > Mods > The Unrelenting > Configuracao.");
@@ -348,6 +413,207 @@ namespace Arvak.TheUnrelenting
                 }
             }
             return opts;
+        }
+
+        private AntiKiteOptions ReadAntiKiteOptions()
+        {
+            AntiKiteOptions result = new AntiKiteOptions
+            {
+                Enabled = true, Radius = 15f, Seconds = 30f, Duration = 6f,
+                Cooldown = 90f, Verbose = false
+            };
+            try
+            {
+                ModConfig cfg = GetConfig();
+                if (cfg == null) return result;
+                var group = cfg[AntiKiteConfigGroup];
+                result.Enabled = (bool)group[CfgAntiKiteEnabled].GetValue();
+                result.Radius = Mathf.Clamp(Convert.ToSingle(group[CfgAntiKiteRadius].GetValue()), 5f, 30f);
+                result.Seconds = Mathf.Clamp(Convert.ToSingle(group[CfgAntiKiteSeconds].GetValue()), 5f, 120f);
+                result.Duration = Mathf.Clamp(Convert.ToSingle(group[CfgAntiKiteDuration].GetValue()), 2f, 15f);
+                result.Cooldown = Mathf.Clamp(Convert.ToSingle(group[CfgAntiKiteCooldown].GetValue()), 20f, 240f);
+                result.Verbose = (bool)group[CfgAntiKiteVerbose].GetValue();
+                _antiKiteConfigWarned = false;
+            }
+            catch (Exception e)
+            {
+                if (!_antiKiteConfigWarned)
+                {
+                    LogWarning("THE UNRELENTING: ANTI-KITE CONFIG INDISPONIVEL; defaults usados. " +
+                        e.GetType().Name + ": " + e.Message);
+                    _antiKiteConfigWarned = true;
+                }
+            }
+            return result;
+        }
+
+        private void ClearKiteObservation(bool forgetIdentity)
+        {
+            _kiteSamples.Clear();
+            _kiteNearSince = -1f;
+            _kiteAwaySince = -1f;
+            _kiteNextSampleAt = 0f;
+            _nextKiteDebugLogAt = 0f;
+            if (forgetIdentity) { _kiteHost = null; _kiteTarget = null; }
+        }
+
+        private void ResetKiteForNewHostOrTarget()
+        {
+            // CleanupTemporaryTraits do hospedeiro anterior remove o bonus.
+            _kiteBoostActive = false;
+            _kiteSlowRemoved = false;
+            _kiteFastRemoved = false;
+            _kiteBoostUntil = 0f;
+            _kiteCleanupWarned = false;
+            // Uma troca de corpo/target nao deve herdar progresso de provocacao.
+            _kiteCooldownUntil = 0f;
+            ClearKiteObservation(true);
+        }
+
+        private void StartPunishingRush(float now)
+        {
+            if (_kiteBoostActive || !Usable(_host) || !Usable(_target) || _burstActive) return;
+            bool removedSlow = false;
+            bool removedFast = false;
+            if (_currentSpeed == PursuitSpeed.Slow)
+            {
+                if (!RemoveOwnedSpeedTrait(_host, "slow")) return;
+                removedSlow = true;
+            }
+            else if (_currentSpeed == PursuitSpeed.Fast)
+            {
+                if (!RemoveOwnedSpeedTrait(_host, "fast")) return;
+                removedFast = true;
+            }
+            if (!AddOwnedSpeedTrait(_host, AntiKiteBoostTraitId))
+            {
+                if (removedSlow) AddOwnedSpeedTrait(_host, "slow");
+                if (removedFast) AddOwnedSpeedTrait(_host, "fast");
+                LogWarning("THE UNRELENTING: ANTI-KITE NAO CONSEGUIU APLICAR BOOST; estado restaurado.");
+                return;
+            }
+            _kiteSlowRemoved = removedSlow;
+            _kiteFastRemoved = removedFast;
+            _kiteBoostActive = true;
+            _kiteCleanupWarned = false;
+            _kiteBoostUntil = now + _antiKiteOptions.Duration;
+            _kiteCooldownUntil = _kiteBoostUntil + _antiKiteOptions.Cooldown;
+            // Aumentar a frequencia de comandos durante a arrancada.
+            _nextMoveCommandAt = 0f;
+            _nextBehaviorOverrideAt = now;
+            LogInfo("THE UNRELENTING: ANTI-KITE JUMPSCARE INICIADO! " +
+                "HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
+                " ALVO_TEMP_ID=" + _target.GetHashCode() +
+                " SPEED_BONUS=" + PunishingRushSpeedBonus.ToString("F0") +
+                " DURACAO_REAL=" + _antiKiteOptions.Duration.ToString("F1") + "s");
+            ClearKiteObservation(false);
+        }
+
+        private void EndPunishingRush()
+        {
+            if (!_kiteBoostActive) return;
+            if (!Usable(_host))
+            {
+                // Remocao fica para o cleanup do host e troca de mundo.
+                _kiteBoostActive = false;
+                ClearKiteObservation(false);
+                return;
+            }
+            if (!RemoveOwnedSpeedTrait(_host, AntiKiteBoostTraitId))
+            {
+                if (!_kiteCleanupWarned)
+                {
+                    LogWarning("THE UNRELENTING: ANTI-KITE FALHOU AO LIMPAR BONUS; " +
+                        "nova tentativa sera feita.");
+                    _kiteCleanupWarned = true;
+                }
+                return;
+            }
+            if (_kiteSlowRemoved && !AddOwnedSpeedTrait(_host, "slow"))
+                LogWarning("THE UNRELENTING: ANTI-KITE FALHA AO RESTAURAR SLOW.");
+            if (_kiteFastRemoved && !AddOwnedSpeedTrait(_host, "fast"))
+                LogWarning("THE UNRELENTING: ANTI-KITE FALHA AO RESTAURAR FAST.");
+            _kiteBoostActive = false;
+            _kiteSlowRemoved = false;
+            _kiteFastRemoved = false;
+            _kiteCleanupWarned = false;
+            ClearKiteObservation(false);
+            LogInfo("THE UNRELENTING: ANTI-KITE JUMPSCARE ENCERRADO! " +
+                "HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
+                " VELOCIDADE_RESTAURADA=" + _currentSpeed.ToString().ToUpperInvariant());
+        }
+
+        private void UpdateAntiKite(float now, float distance)
+        {
+            if (_kiteBoostActive)
+            {
+                if (now >= _kiteBoostUntil) EndPunishingRush();
+                return;
+            }
+            if (!_antiKiteOptions.Enabled ||
+                !Usable(_host) || !Usable(_target))
+            {
+                ClearKiteObservation(false);
+                return;
+            }
+            if (!object.ReferenceEquals(_kiteHost, _host) ||
+                !object.ReferenceEquals(_kiteTarget, _target))
+            {
+                ClearKiteObservation(false);
+                _kiteHost = _host;
+                _kiteTarget = _target;
+            }
+            if (now < _kiteCooldownUntil) return;
+            if (distance > _antiKiteOptions.Radius)
+            {
+                if (_kiteAwaySince < 0f) _kiteAwaySince = now;
+                if (now - _kiteAwaySince > 2f) ClearKiteObservation(false);
+                return;
+            }
+            _kiteAwaySince = -1f;
+            if (_kiteNearSince < 0f) _kiteNearSince = now;
+            if (now < _kiteNextSampleAt) return;
+            _kiteNextSampleAt = now + 0.55f;
+
+            Vector2 pos;
+            if (!TryGetPosition(_target, out pos)) return;
+            _kiteSamples.Add(new KiteSample(now, pos));
+            // Janela deslizante de 12s para distinguir um movimento circular
+            // da fuga eficiente em linha reta. Nunca analisar o mapa todo aqui.
+            while (_kiteSamples.Count > 1 &&
+                   _kiteSamples[0].Time < now - 12f) _kiteSamples.RemoveAt(0);
+            if (_kiteSamples.Count < 4) return;
+            float path = 0f;
+            for (int i = 1; i < _kiteSamples.Count; i++)
+                path += Vector2.Distance(_kiteSamples[i - 1].Position, _kiteSamples[i].Position);
+            float displacement = Vector2.Distance(_kiteSamples[0].Position,
+                _kiteSamples[_kiteSamples.Count - 1].Position);
+            float proximity = now - _kiteNearSince;
+            // Exigir movimentacao + ineficiencia de deslocamento. Quem esta
+            // correndo para LONGE tende a ganhar distancia e deslocamento liquido.
+            bool circling = path >= 12f && displacement <= path * 0.78f;
+            if (_antiKiteOptions.Verbose && now >= _nextKiteDebugLogAt)
+            {
+                _nextKiteDebugLogAt = now + 5f;
+                LogInfo("THE UNRELENTING: ANTI-KITE OBSERVANDO! " +
+                    "ALVO_TEMP_ID=" + _target.GetHashCode() +
+                    " DISTANCIA=" + distance.ToString("F1") +
+                    " PERTO_SEG=" + proximity.ToString("F1") +
+                    " CAMINHO_12S=" + path.ToString("F1") +
+                    " DESLOCAMENTO_12S=" + displacement.ToString("F1") +
+                    " CIRCULANDO=" + circling);
+            }
+            if (proximity >= _antiKiteOptions.Seconds && circling && !_burstActive)
+            {
+                LogInfo("THE UNRELENTING: ANTI-KITE PROVOCACAO DETECTADA! " +
+                    "HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
+                    " ALVO_TEMP_ID=" + _target.GetHashCode() +
+                    " PERTO_SEG=" + proximity.ToString("F1") +
+                    " DISTANCIA=" + distance.ToString("F1") +
+                    " CAMINHO=" + path.ToString("F1") +
+                    " DESLOCAMENTO=" + displacement.ToString("F1"));
+                StartPunishingRush(now);
+            }
         }
 
         // APIs de dados do jogo mudam entre builds. Evitamos assumir a
@@ -789,6 +1055,7 @@ namespace Arvak.TheUnrelenting
 
         private void UpdateSuddenBurst()
         {
+            if (_kiteBoostActive) return;
             if (!EnableSuddenBurst || !Usable(_host) || !Usable(_target)) return;
             if (_burstActive)
             {
@@ -990,6 +1257,8 @@ namespace Arvak.TheUnrelenting
                     _targetQueue.Remove(victim);
                     _knownHaunted.Remove(victim);
                     _target = _targetQueue.Count > 0 ? _targetQueue[0] : null;
+                    if (_kiteBoostActive) EndPunishingRush();
+                    ResetKiteForNewHostOrTarget();
                     if (_target != null)
                     {
                         LogInfo("THE UNRELENTING: PROXIMA VITIMA! NOVO_ALVO_TEMP_ID=" +
@@ -1003,6 +1272,8 @@ namespace Arvak.TheUnrelenting
                 LogWarning("THE UNRELENTING: EXECUCAO NAO CONFIRMADA! ALVO_TEMP_ID=" + victimId);
                 return;
             }
+
+            UpdateAntiKite(now, distance);
 
             // Neutraliza tarefas normais (incluindo sono) periodicamente, mas
             // NAO a cada frame, evitando resetar todo o pathfinding constantemente.
@@ -1047,6 +1318,7 @@ namespace Arvak.TheUnrelenting
                 if (Usable(old)) old.cancelAllBeh();
             }
             _host = next;
+            ResetKiteForNewHostOrTarget();
             _host.cancelAllBeh();
             _currentSpeed = RollSpeed();
             _burstActive = false; // antiga corrida limpa por CleanupTemporaryTraits(old)
@@ -1085,6 +1357,7 @@ namespace Arvak.TheUnrelenting
             }
             _host = null;
             _target = null;
+            ResetKiteForNewHostOrTarget();
             _killsThisChain = 0;
             _currentSpeed = PursuitSpeed.Normal;
             _burstActive = false;
@@ -1103,10 +1376,12 @@ namespace Arvak.TheUnrelenting
             foreach (Actor actor in new List<Actor>(_traitsAddedByMod.Keys))
                 CleanupTemporaryTraits(actor);
             _traitsAddedByMod.Clear();
+            ResetKiteForNewHostOrTarget();
             _knownHaunted.Clear();
             _targetQueue.Clear();
             _host = null;
             _target = null;
+            ResetKiteForNewHostOrTarget();
             _killsThisChain = 0;
             _currentSpeed = PursuitSpeed.Normal;
             _burstActive = false;
@@ -1184,6 +1459,9 @@ namespace Arvak.TheUnrelenting
                     if (actor.hasTrait(TraitId)) current.Add(actor);
                 }
 
+                _antiKiteOptions = ReadAntiKiteOptions();
+                if (!_antiKiteOptions.Enabled && _kiteBoostActive) EndPunishingRush();
+
                 // The Witness usa snapshots da iteracao ANTERIOR para identificar
                 // uma morte natural/combate antes de atualizar a fila.
                 WitnessOptions witness = ReadWitnessOptions();
@@ -1219,6 +1497,8 @@ namespace Arvak.TheUnrelenting
                 if (!object.ReferenceEquals(nextTarget, _target))
                 {
                     Actor prev = _target;
+                    if (_kiteBoostActive) EndPunishingRush();
+                    ResetKiteForNewHostOrTarget();
                     _target = nextTarget;
                     if (_target != null)
                     {
@@ -1261,11 +1541,29 @@ namespace Arvak.TheUnrelenting
 
                 if (EnableHostHopping && Time.unscaledTime >= _nextHostChangeTime)
                 {
-                    Actor newHost = PickHost(alive, current, _target, _host);
-                    if (newHost != null && !object.ReferenceEquals(newHost, _host))
-                        SetHost(newHost, true);
+                    // Nao interromper uma corrida de castigo no meio nem
+                    // perder o contador antes de completar os 30s de provocacao.
+                    bool waitForKite = _kiteBoostActive;
+                    if (!waitForKite && _antiKiteOptions.Enabled && _kiteNearSince >= 0f &&
+                        object.ReferenceEquals(_kiteHost, _host) &&
+                        object.ReferenceEquals(_kiteTarget, _target) && Usable(_host) &&
+                        Usable(_target) && _host.distanceToActorTile(_target) <= _antiKiteOptions.Radius)
+                    {
+                        float elapsedClose = Time.unscaledTime - _kiteNearSince;
+                        waitForKite = elapsedClose < _antiKiteOptions.Seconds + 5f;
+                    }
+                    if (waitForKite)
+                    {
+                        _nextHostChangeTime = Time.unscaledTime + 2f;
+                    }
                     else
-                        _nextHostChangeTime = Time.unscaledTime + 10f;
+                    {
+                        Actor newHost = PickHost(alive, current, _target, _host);
+                        if (newHost != null && !object.ReferenceEquals(newHost, _host))
+                            SetHost(newHost, true);
+                        else
+                            _nextHostChangeTime = Time.unscaledTime + 10f;
+                    }
                 }
 
                 // O loop global permanece a cada 2s; movimento e contato
