@@ -1,5 +1,10 @@
 {
   "trait_ArvakTheUnrelenting_Haunted": "Haunted",
-  "trait_ArvakTheUnrelenting_Haunted_info": "Algo esta vindo. Nunca para de caminhar. (v0.6: teste de execucao por proximidade.)",
-  "trait_group_ArvakTheUnrelenting": "The Unrelenting"
+  "trait_ArvakTheUnrelenting_Haunted_info": "Uma entidade misteriosa persegue o marcado. A maldicao pode surgir manualmente ou por um evento raro opcional.",
+  "trait_group_ArvakTheUnrelenting": "The Unrelenting",
+  "Origins": "Origens — The Unrelenting",
+  "EnableRandomOrigins": "Ativar origens aleatorias raras",
+  "ChancePerAttemptPercent": "Chance por tentativa (%)",
+  "AttemptIntervalSeconds": "Intervalo entre tentativas (segundos reais)",
+  "TestMode": "Teste rapido: gerar uma origem apos 10 s"
 }

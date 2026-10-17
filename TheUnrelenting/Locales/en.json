@@ -1,5 +1,10 @@
 {
   "trait_ArvakTheUnrelenting_Haunted": "Haunted",
-  "trait_ArvakTheUnrelenting_Haunted_info": "Something is coming. It never stops walking. (v0.6: lethal encounter test.)",
-  "trait_group_ArvakTheUnrelenting": "The Unrelenting"
+  "trait_ArvakTheUnrelenting_Haunted_info": "A mysterious entity pursues the marked. The curse can begin manually or through a rare, optional origin.",
+  "trait_group_ArvakTheUnrelenting": "The Unrelenting",
+  "Origins": "Origins — The Unrelenting",
+  "EnableRandomOrigins": "Enable rare random origins",
+  "ChancePerAttemptPercent": "Chance per attempt (%)",
+  "AttemptIntervalSeconds": "Interval between attempts (real seconds)",
+  "TestMode": "Quick test: one guaranteed origin after 10 s"
 }

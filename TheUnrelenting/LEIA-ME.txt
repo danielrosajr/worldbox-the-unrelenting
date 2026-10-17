@@ -1,24 +1,17 @@
-THE UNRELENTING v0.9.0 - SUDDEN RUSH
+THE UNRELENTING v0.10.0 - ORIGINS (WorldBox 0.51.2 / NML)
 
-Novo: a entidade pode acelerar de repente SEM trocar de hospedeiro.
-- Ao assumir corpo: lento 50%, normal 35%, rapido 15%.
-- Se o corpo nao for rapido, a cada 10-17s (primeira tentativa) e 12-22s depois
-  ele tem chance de 25% por tentativa de correr por 3-5.5s reais.
-- So tenta arrancada entre 2 e 55 unidades da vitima; nao e garantido.
-- Quando termina, o corpo volta para o modo de velocidade anterior.
+1. Feche o jogo e substitua a pasta antiga TheUnrelenting pela nova.
+2. Certifique-se de copiar tambem o NOVO default_config.json.
+3. No jogo: Mods -> The Unrelenting -> Mod Configuration.
+4. Padrão: origem aleatoria DESLIGADA. Haunted manual continua funcionando.
+5. Para testar automaticamente: ATIVE "Origens aleatorias raras" e "Teste rapido".
+   Em um mundo novo com humanos/elfos/anoes/orcs, uma criatura devera receber
+   Haunted apos aproximadamente 10 segundos REAIS.
+6. Verifique Player.log com o comando descrito em README.md.
 
-Mantidos: Haunted, fila de vitimas, troca entre bichos e pessoas, execucao,
-limpeza das traits adicionadas pelo mod. Nao habilitamos maldicao aleatoria,
-transmissao ao assassino ou hereditariedade nesta versao.
+Geracao automatica unica por mundo carregado nesta sessao; nao e
+persistente entre salvamentos. Use mundo descartavel.
 
-INSTALAR: substitua a pasta TheUnrelenting antiga (Mods) por esta, com jogo fechado.
-TESTAR: mundo descartavel, 2-3 Haunted e muitos animais/humanos comuns.
-COMANDO:
-grep -nE 'ARRANCADA|EXECUCAO CONFIRMADA|error CS|Failed to compile' \
-  ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 100
-
-GITHUB:
-Arquivos: substitua Main.cs, mod.json, README.md e LEIA-ME.txt.
-Locales: mantenha os arquivos ja existentes.
-Commit: feat: add sudden speed bursts during Haunted pursuit
-Tag: v0.9.0 (apos testar).
+GitHub: adicionar default_config.json; substituir Main.cs, mod.json,
+Locales e documentacao pelos da nova versao.
+Commit: feat: add opt-in rare Haunted origins and NML settings panel

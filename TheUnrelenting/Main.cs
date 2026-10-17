@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.9.0 - velocidades por hospedeiro + ARRANCADA SUBITA rara no mesmo hospedeiro.
+    // v0.10.0 - Origins: geracao rara, mundial e opcional da trait Haunted.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -58,6 +58,33 @@ namespace Arvak.TheUnrelenting
         // podem se opor: aplicá-las poderia apagar uma trait que nao e do mod.
         private static readonly string[] OppositeRiskTraits = { "slow", "fast", "agile", "plague" };
 
+        // Origins: somente uma nova maldicao automatica por mundo/sessao.
+        // Quando desativado, Haunted continua aplicavel pelo jogador normalmente.
+        // A leitura dos valores vem do painel nativo do NeoModLoader.
+        private const string OriginConfigGroup = "Origins";
+        private const string CfgRandomEnabled = "EnableRandomOrigins";
+        private const string CfgTestMode = "TestMode";
+        private const string CfgChance = "ChancePerAttemptPercent";
+        private const string CfgInterval = "AttemptIntervalSeconds";
+        private static readonly HashSet<string> EligibleOriginAssets =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "human", "elf", "dwarf", "orc" };
+
+        private struct OriginOptions
+        {
+            public bool Enabled;
+            public bool TestMode;
+            public float Chance;
+            public float Interval;
+        }
+
+        private bool _autoOriginDoneInWorld;
+        private bool _originScheduled;
+        private bool _lastOriginsEnabled;
+        private bool _lastOriginsTestMode;
+        private float _nextOriginAttemptAt;
+        private bool _warnedOriginSettings;
+
         private readonly System.Random _random = new System.Random();
         private readonly List<Actor> _targetQueue = new List<Actor>();
         private readonly HashSet<Actor> _knownHaunted = new HashSet<Actor>();
@@ -100,7 +127,9 @@ namespace Arvak.TheUnrelenting
                 needs_to_be_explored = false
             });
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.9.0 CADEIA + VELOCIDADE ALEATORIA + ARRANCADAS ATIVAS.");
+            LogInfo("THE UNRELENTING: V0.10.0 ORIGINS + CADEIA + VELOCIDADE + ARRANCADAS ATIVAS.");
+            LogInfo("THE UNRELENTING: ORIGINS: menu do NML > Mods > The Unrelenting > Configuracao.");
+            LogInfo("THE UNRELENTING: ORIGINS: aleatoria DESLIGADA por padrao; Haunted manual sempre disponivel.");
             LogInfo("THE UNRELENTING: CHANCES DE VELOCIDADE LENTO=" + SlowChancePercent +
                 "% NORMAL=" + NormalChancePercent + "% RAPIDO=" +
                 (100 - SlowChancePercent - NormalChancePercent) + "%.");
@@ -140,6 +169,133 @@ namespace Arvak.TheUnrelenting
                 catch { /* proximo overload */ }
             }
             return false;
+        }
+
+        private OriginOptions ReadOriginOptions()
+        {
+            OriginOptions options = new OriginOptions
+            {
+                Enabled = false,
+                TestMode = false,
+                Chance = 1f,
+                Interval = 180f
+            };
+            try
+            {
+                // BasicMod.GetConfig(): acesso tipado ao painel nativo do NML.
+                // Sao lidas as preferencias gravadas pelo NML a cada scan.
+                ModConfig config = GetConfig();
+                if (config == null) return options;
+                var group = config[OriginConfigGroup];
+                options.Enabled = (bool)group[CfgRandomEnabled].GetValue();
+                options.TestMode = (bool)group[CfgTestMode].GetValue();
+                options.Chance = Convert.ToSingle(group[CfgChance].GetValue());
+                options.Interval = Convert.ToSingle(group[CfgInterval].GetValue());
+                // Limites extras protegem de configuracoes corrompidas.
+                options.Chance = Mathf.Clamp(options.Chance, 0f, 100f);
+                options.Interval = Mathf.Clamp(options.Interval, 30f, 1800f);
+                _warnedOriginSettings = false;
+            }
+            catch (Exception e)
+            {
+                // Falha fechada: nunca gerar maldicao aleatoria sem config valida.
+                options.Enabled = false;
+                options.TestMode = false;
+                if (!_warnedOriginSettings)
+                {
+                    LogWarning("THE UNRELENTING: ORIGINS CONFIG INDISPONIVEL! ALEATORIO DESATIVADO. " +
+                        e.GetType().Name + ": " + e.Message);
+                    _warnedOriginSettings = true;
+                }
+            }
+            return options;
+        }
+
+        private Actor PickOriginTarget(List<Actor> alive, HashSet<Actor> currentHaunted)
+        {
+            Actor choice = null;
+            int candidates = 0;
+            foreach (Actor actor in alive)
+            {
+                if (!Usable(actor) || currentHaunted.Contains(actor) ||
+                    object.ReferenceEquals(actor, _host) || !EligibleOriginAssets.Contains(GetAssetId(actor)))
+                    continue;
+                candidates++;
+                if (_random.Next(candidates) == 0) choice = actor;
+            }
+            return choice;
+        }
+
+        private void UpdateOrigins(List<Actor> alive, HashSet<Actor> currentHaunted)
+        {
+            OriginOptions options = ReadOriginOptions();
+            bool changed = options.Enabled != _lastOriginsEnabled ||
+                           options.TestMode != _lastOriginsTestMode;
+            if (changed)
+            {
+                LogInfo("THE UNRELENTING: ORIGINS CONFIG ALTERADA! ALEATORIO=" + options.Enabled +
+                    " TESTE_RAPIDO=" + options.TestMode +
+                    " CHANCE=" + options.Chance.ToString("F2") +
+                    "% INTERVALO_REAL=" + options.Interval.ToString("F0") + "s");
+                _originScheduled = false;
+                _lastOriginsEnabled = options.Enabled;
+                _lastOriginsTestMode = options.TestMode;
+            }
+            if (!options.Enabled || _autoOriginDoneInWorld) return;
+
+            // Nao iniciar uma segunda origem enquanto qualquer Haunted existir.
+            // Inclusive depois da extincao da cadeia, esta versao gera no maximo
+            // uma origem automatica por mundo carregado, ate sair/carregar mundo.
+            if (currentHaunted.Count > 0 || _targetQueue.Count > 0 || _host != null)
+            {
+                // Reagendar ao ficar sem Haunted, evitando origem imediata ao final.
+                _originScheduled = false;
+                return;
+            }
+
+            float effectiveInterval = options.TestMode ? 10f : options.Interval;
+            float effectiveChance = options.TestMode ? 100f : options.Chance;
+            if (!_originScheduled)
+            {
+                _nextOriginAttemptAt = Time.unscaledTime + effectiveInterval;
+                _originScheduled = true;
+                LogInfo("THE UNRELENTING: ORIGINS AGENDADA! MODO=" +
+                    (options.TestMode ? "TESTE" : "RARO") +
+                    " INTERVALO_SEGUNDOS=" + effectiveInterval.ToString("F0") +
+                    " CHANCE_POR_TENTATIVA=" + effectiveChance.ToString("F2") + "%");
+                return;
+            }
+            if (Time.unscaledTime < _nextOriginAttemptAt) return;
+            _nextOriginAttemptAt = Time.unscaledTime + effectiveInterval;
+            float roll = (float)(_random.NextDouble() * 100.0);
+            if (roll >= effectiveChance)
+            {
+                LogInfo("THE UNRELENTING: ORIGINS SORTEIO SEM EVENTO! CHANCE=" +
+                    effectiveChance.ToString("F2") + "%");
+                return;
+            }
+
+            Actor candidate = PickOriginTarget(alive, currentHaunted);
+            if (candidate == null)
+            {
+                LogWarning("THE UNRELENTING: ORIGINS SEM ELEGIVEIS! Necessita humano, elfo, anao ou orc vivo.");
+                return;
+            }
+            int candidateId = candidate.GetHashCode();
+            if (MutateTrait(candidate, "addTrait", TraitId) && candidate.hasTrait(TraitId))
+            {
+                // Garantir que a fila seja atualizada ainda neste mesmo scan.
+                currentHaunted.Add(candidate);
+                _autoOriginDoneInWorld = true;
+                LogInfo("THE UNRELENTING: ORIGINS HAUNTED GERADA! ALVO_TEMP_ID=" +
+                    candidateId + " ESPECIE=" + GetAssetId(candidate) +
+                    " MODO=" + (options.TestMode ? "TESTE" : "RARO") +
+                    " UNICA_NESTA_SESSAO_DE_MUNDO=True");
+            }
+            else
+            {
+                LogWarning("THE UNRELENTING: ORIGINS FALHA AO APLICAR HAUNTED! ALVO_TEMP_ID=" + candidateId);
+            }
         }
 
         private PursuitSpeed RollSpeed()
@@ -448,6 +604,12 @@ namespace Arvak.TheUnrelenting
             _nextBurstCheckAt = 0f;
             _warnedNoHost = false;
             _reportedError = false;
+            _autoOriginDoneInWorld = false;
+            _originScheduled = false;
+            _lastOriginsEnabled = false;
+            _lastOriginsTestMode = false;
+            _nextOriginAttemptAt = 0f;
+            _warnedOriginSettings = false;
         }
 
         private void Update()
@@ -477,6 +639,10 @@ namespace Arvak.TheUnrelenting
                     alive.Add(actor);
                     if (actor.hasTrait(TraitId)) current.Add(actor);
                 }
+
+                // Origins e um sistema separado. Ele aplica Haunted em no maximo
+                // UMA unidade elegivel e depois deixa a fila existente funcionar.
+                UpdateOrigins(alive, current);
 
                 // A fila respeita a ordem de descoberta; nao abre novos perseguidores.
                 foreach (Actor actor in alive)

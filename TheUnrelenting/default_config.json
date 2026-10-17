@@ -1,0 +1,28 @@
+{
+  "Origins": [
+    {
+      "Id": "EnableRandomOrigins",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "ChancePerAttemptPercent",
+      "Type": "SLIDER",
+      "FloatVal": 1.0,
+      "MinFloatVal": 0.1,
+      "MaxFloatVal": 10.0
+    },
+    {
+      "Id": "AttemptIntervalSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 180.0,
+      "MinFloatVal": 30.0,
+      "MaxFloatVal": 900.0
+    },
+    {
+      "Id": "TestMode",
+      "Type": "SWITCH",
+      "BoolVal": false
+    }
+  ]
+}

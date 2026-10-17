@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.9.0",
-  "description": "Single body-hopping entity hunting a Haunted victim chain, random host speed, and occasional temporary unexpected sprint (experimental)",
+  "version": "0.10.0",
+  "description": "Origins: opt-in rare world events, native NML settings and test mode; manual Haunted and body-hopping pursuit retained",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []
