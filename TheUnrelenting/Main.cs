@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.11.4 - Haunted: Trauma: marca visual propria para maldicoes de origem traumatica. Perseguicao compartilhada com Haunted.
+    // v0.12.0 - Bloodline: heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -17,6 +17,7 @@ namespace Arvak.TheUnrelenting
         // Novo ID permanente. Qualquer unidade com UMA destas duas traits
         // entra na mesma fila e e perseguida pela mesma entidade.
         public const string TraumaTraitId = "ArvakTheUnrelenting_HauntedTrauma";
+        public const string BloodlineTraitId = "ArvakTheUnrelenting_HauntedBloodline";
         public const string GroupId = "ArvakTheUnrelenting_Group";
         private const string AntiKiteBoostTraitId = "ArvakTheUnrelenting_PunishingRush";
         // Trait temporaria e nao selecionavel. Registrada apos AssetManager.traits.add().
@@ -277,6 +278,324 @@ namespace Arvak.TheUnrelenting
         private int _traumaViolentDeaths;
         private int _traumaTransfers;
 
+        // BLOODLINE: a execucao pela propria entidade pode escolher no maximo UM
+        // descendente vivo. Nao supor relacao apenas por sobrenome, cidade, clan
+        // ou grupo familiar: exigimos referencia de pai/mae/filho reconhecivel.
+        // Fica desligado por padrao ate validarmos o formato genealogico do jogo.
+        private const string BloodlineConfigGroup = "Bloodline";
+        private const string CfgBloodlineTransfer = "EnableBloodlineTransfer";
+        private const string CfgBloodlineChance = "BloodlineChancePercent";
+        private const string CfgBloodlineDepth = "BloodlineMaxGenerations";
+        private const string CfgBloodlineVerbose = "VerboseBloodlineLogs";
+        private const int BloodlineMaxActors = 6500;
+        private struct BloodlineOptions
+        {
+            public bool Transfer;
+            public float Chance;
+            public int Generations;
+            public bool Verbose;
+        }
+        private bool _bloodlineConfigWarned;
+        private int _bloodlineTransfers;
+        private int _bloodlineExecutions;
+        private int _bloodlineNoProof;
+
+        private BloodlineOptions ReadBloodlineOptions()
+        {
+            BloodlineOptions result = new BloodlineOptions
+            {
+                Transfer = false, Chance = 100f, Generations = 3, Verbose = true
+            };
+            try
+            {
+                ModConfig cfg = GetConfig();
+                if (cfg == null) return result;
+                var group = cfg[BloodlineConfigGroup];
+                result.Transfer = (bool)group[CfgBloodlineTransfer].GetValue();
+                result.Chance = Mathf.Clamp(Convert.ToSingle(group[CfgBloodlineChance].GetValue()), 0f, 100f);
+                result.Generations = Mathf.Clamp(Convert.ToInt32(group[CfgBloodlineDepth].GetValue()), 1, 3);
+                result.Verbose = (bool)group[CfgBloodlineVerbose].GetValue();
+                _bloodlineConfigWarned = false;
+            }
+            catch (Exception e)
+            {
+                result.Transfer = false;
+                if (!_bloodlineConfigWarned)
+                {
+                    LogWarning("THE UNRELENTING: BLOODLINE CONFIG INDISPONIVEL! TRANSMISSAO DESATIVADA: " + e.Message);
+                    _bloodlineConfigWarned = true;
+                }
+            }
+            return result;
+        }
+
+        private static readonly string[] ParentReferenceMethods =
+        {
+            "getParents", "getParent", "getFather", "getMother", "getParent1", "getParent2"
+        };
+        private static readonly string[] ChildReferenceMethods = { "getChildren", "getChilds", "getOffspring" };
+
+        // Apenas nomes que identificam a relacao pai/mae - NAO usar clan,
+        // family membership ou o id da familia como prova de descendencia.
+        private static bool IsParentMemberName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string n = name.ToLowerInvariant();
+            if (n.Contains("grand") || n.Contains("index") || n.Contains("count") ||
+                n.Contains("chance") || n.Contains("trait") || n.Contains("history")) return false;
+            return n == "parent" || n == "parents" || n == "parent1" || n == "parent2" ||
+                   n == "parent_1" || n == "parent_2" || n == "parenta" || n == "parentb" ||
+                   n == "father" || n == "mother" || n == "dad" || n == "mom" ||
+                   n == "parent_id" || n == "parent_ids" || n == "parentid" || n == "parentids" ||
+                   n == "father_id" || n == "fatherid" || n == "mother_id" || n == "motherid" ||
+                   n == "parent_1_id" || n == "parent_2_id" || n == "parent1id" || n == "parent2id" ||
+                   n == "parent_ids_list" || n == "fatherid1" || n == "motherid1";
+        }
+
+        private static bool IsChildMemberName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string n = name.ToLowerInvariant();
+            if (n.Contains("count") || n.Contains("index") || n.Contains("chance")) return false;
+            return n == "children" || n == "childs" || n == "child" || n == "kids" ||
+                   n == "offspring" || n == "childrenids" || n == "children_ids" ||
+                   n == "childrenid" || n == "children_id";
+        }
+
+        // Reflection aqui evita compilar contra estruturas genealogicas que
+        // mudam de WorldBox para WorldBox. A verificacao e fail-closed.
+        private static void CollectNamedReferences(object source, List<object> into, bool parents)
+        {
+            if (source == null) return;
+            Type type = source.GetType();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            try
+            {
+                foreach (FieldInfo f in type.GetFields(flags))
+                {
+                    if (!(parents ? IsParentMemberName(f.Name) : IsChildMemberName(f.Name))) continue;
+                    try { object val = f.GetValue(source); if (val != null) into.Add(val); } catch { }
+                }
+                foreach (PropertyInfo p in type.GetProperties(flags))
+                {
+                    if (!(parents ? IsParentMemberName(p.Name) : IsChildMemberName(p.Name)) ||
+                        p.GetIndexParameters().Length != 0) continue;
+                    try { object val = p.GetValue(source, null); if (val != null) into.Add(val); } catch { }
+                }
+                string[] methods = parents ? ParentReferenceMethods : ChildReferenceMethods;
+                foreach (string name in methods)
+                {
+                    MethodInfo m = type.GetMethod(name, flags, null, Type.EmptyTypes, null);
+                    if (m == null || m.ReturnType == typeof(void)) continue;
+                    try { object val = m.Invoke(source, null); if (val != null) into.Add(val); } catch { }
+                }
+            }
+            catch { /* objeto sem metadados utilizaveis */ }
+        }
+
+        private static void CollectRelationshipValues(Actor actor, List<object> result, bool parents)
+        {
+            if (actor == null) return;
+            object data = ReadMember(actor, "data");
+            CollectNamedReferences(actor, result, parents);
+            CollectNamedReferences(data, result, parents);
+            // Alguns builds aninham os IDs de pais no objeto de genealogia.
+            string[] nested = { "genealogy", "lineage", "ancestry", "relatives" };
+            foreach (string field in nested)
+            {
+                try
+                {
+                    CollectNamedReferences(ReadMember(actor, field), result, parents);
+                    CollectNamedReferences(ReadMember(data, field), result, parents);
+                }
+                catch { }
+            }
+        }
+
+        private static string GetStableActorId(Actor actor)
+        {
+            if (actor == null) return null;
+            try
+            {
+                object data = ReadMember(actor, "data");
+                object id = ReadMember(data, "id") ?? ReadMember(actor, "id");
+                return id == null ? null : Convert.ToString(id);
+            }
+            catch { return null; }
+        }
+
+        private static bool ReferenceMatchesActor(object value, Actor actor, string stableId, int depth)
+        {
+            if (value == null || actor == null || depth > 3) return false;
+            if (object.ReferenceEquals(value, actor)) return true;
+            object data = ReadMember(actor, "data");
+            if (data != null && object.ReferenceEquals(value, data)) return true;
+            if (value is bool) return false;
+            if (value is string)
+            {
+                if (string.IsNullOrEmpty(stableId)) return false;
+                string str = (string)value;
+                if (str == stableId) return true;
+                // IDs explicitamente listados, nao substring (1 != 11).
+                string[] ids = str.Split(new char[]{',',';','|',' '}, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string id in ids) if (id == stableId) return true;
+                return false;
+            }
+            if (value is int || value is long || value is uint || value is ulong || value is short)
+                return !string.IsNullOrEmpty(stableId) && Convert.ToString(value) == stableId;
+            // List<Actor>, Actor[], IEnumerable de IDs ou refs de parentes.
+            System.Collections.IEnumerable enumerable = value as System.Collections.IEnumerable;
+            if (enumerable != null && depth < 3)
+            {
+                int seen = 0;
+                try
+                {
+                    foreach (object entry in enumerable)
+                    {
+                        if (++seen > 500) break;
+                        if (ReferenceMatchesActor(entry, actor, stableId, depth + 1)) return true;
+                    }
+                }
+                catch { }
+                return false;
+            }
+            try
+            {
+                object id = ReadMember(value, "id") ?? ReadMember(value, "actor_id") ??
+                            ReadMember(value, "unit_id");
+                if (id != null && !string.IsNullOrEmpty(stableId) &&
+                    Convert.ToString(id) == stableId) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        private static bool IsVerifiedDirectChild(Actor parent, Actor child)
+        {
+            if (parent == null || child == null || object.ReferenceEquals(parent, child)) return false;
+            string parentId = GetStableActorId(parent);
+            List<object> childParents = new List<object>();
+            CollectRelationshipValues(child, childParents, true);
+            foreach (object relationship in childParents)
+                if (ReferenceMatchesActor(relationship, parent, parentId, 0)) return true;
+            string childId = GetStableActorId(child);
+            List<object> parentChildren = new List<object>();
+            CollectRelationshipValues(parent, parentChildren, false);
+            foreach (object relationship in parentChildren)
+                if (ReferenceMatchesActor(relationship, child, childId, 0)) return true;
+            return false;
+        }
+
+        // Diagnostico leve de metadados quando a genealogia nao e encontrada.
+        // Mostra NOMES de campos; nunca adivinha ou altera dados de parentesco.
+        private static string DescribeGenealogyMembers(object obj)
+        {
+            if (obj == null) return "AUSENTE";
+            List<string> found = new List<string>();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            try
+            {
+                foreach (FieldInfo f in obj.GetType().GetFields(flags))
+                {
+                    string n = f.Name.ToLowerInvariant();
+                    if (n.Contains("parent") || n.Contains("father") || n.Contains("mother") ||
+                        n.Contains("child") || n.Contains("geneal") || n.Contains("lineage") ||
+                        n.Contains("relative")) found.Add(f.Name);
+                    if (found.Count >= 16) break;
+                }
+                if (found.Count < 16)
+                    foreach (PropertyInfo prop in obj.GetType().GetProperties(flags))
+                    {
+                        string n = prop.Name.ToLowerInvariant();
+                        if (n.Contains("parent") || n.Contains("father") || n.Contains("mother") ||
+                            n.Contains("child") || n.Contains("geneal") || n.Contains("lineage") ||
+                            n.Contains("relative")) found.Add(prop.Name);
+                        if (found.Count >= 16) break;
+                    }
+            }
+            catch { }
+            return found.Count == 0 ? "NENHUM" : string.Join(",", found.ToArray());
+        }
+
+        private Actor PickBloodlineHeir(Actor dying, BloodlineOptions options, out int generation,
+                                        out int totalCandidates, out int checkedActors)
+        {
+            generation = 0;
+            totalCandidates = 0;
+            checkedActors = 0;
+            if (dying == null || World.world == null) return null;
+            List<Actor> all = new List<Actor>();
+            foreach (Actor a in World.world.units)
+            {
+                if (!Usable(a)) continue;
+                all.Add(a);
+                if (all.Count > BloodlineMaxActors)
+                {
+                    LogWarning("THE UNRELENTING: BLOODLINE PAUSADA! POPULACAO MAIOR QUE " + BloodlineMaxActors);
+                    return null;
+                }
+            }
+            checkedActors = all.Count;
+            // Em cada geracao: filhos diretos de quem esta na geracao anterior.
+            // Descendentes mais proximos tem prioridade (filhos > netos > bisnetos).
+            List<Actor> frontier = new List<Actor>();
+            frontier.Add(dying);
+            HashSet<Actor> seen = new HashSet<Actor>();
+            seen.Add(dying);
+            for (int gen = 1; gen <= options.Generations; gen++)
+            {
+                List<Actor> next = new List<Actor>();
+                List<Actor> eligible = new List<Actor>();
+                foreach (Actor candidate in all)
+                {
+                    if (seen.Contains(candidate)) continue;
+                    bool confirmed = false;
+                    foreach (Actor ancestor in frontier)
+                    {
+                        if (IsVerifiedDirectChild(ancestor, candidate)) { confirmed = true; break; }
+                    }
+                    if (!confirmed) continue;
+                    seen.Add(candidate);
+                    next.Add(candidate);
+                    if (!object.ReferenceEquals(candidate, _host) && !HasAnyHaunted(candidate) &&
+                        EligibleOriginAssets.Contains(GetAssetId(candidate))) eligible.Add(candidate);
+                }
+                if (eligible.Count > 0)
+                {
+                    generation = gen;
+                    totalCandidates = eligible.Count;
+                    return eligible[_random.Next(eligible.Count)];
+                }
+                frontier = next;
+                if (frontier.Count == 0) break;
+            }
+            return null;
+        }
+
+        private void TryBloodlineTransfer(Actor victim, Actor heir, int generation,
+                                         BloodlineOptions options)
+        {
+            if (!options.Transfer) return;
+            if (heir == null) return;
+            if (!Usable(heir) || HasAnyHaunted(heir) || object.ReferenceEquals(heir, _host)) return;
+            float roll = (float)(_random.NextDouble() * 100.0);
+            if (options.Verbose)
+                LogInfo("THE UNRELENTING: BLOODLINE SORTEIO! VITIMA_TEMP_ID=" + victim.GetHashCode() +
+                    " HERDEIRO_TEMP_ID=" + heir.GetHashCode() + " GERACAO=" + generation +
+                    " CHANCE=" + options.Chance.ToString("F1") + "% SORTEIO=" + roll.ToString("F2"));
+            if (roll >= options.Chance) return;
+            if (MutateTrait(heir, "addTrait", BloodlineTraitId) && heir.hasTrait(BloodlineTraitId))
+            {
+                _bloodlineTransfers++;
+                if (!_targetQueue.Contains(heir)) _targetQueue.Add(heir);
+                LogInfo("THE UNRELENTING: BLOODLINE TRANSMISSAO CONFIRMADA!" +
+                    " VITIMA_TEMP_ID=" + victim.GetHashCode() + " HERDEIRO_TEMP_ID=" + heir.GetHashCode() +
+                    " GERACAO=" + generation + " TRAIT=" + BloodlineTraitId +
+                    " TOTAL_HERANCAS=" + _bloodlineTransfers + " FILA=" + _targetQueue.Count);
+            }
+            else LogWarning("THE UNRELENTING: BLOODLINE FALHA AO APLICAR TRAIT! HERDEIRO=" + heir.GetHashCode());
+        }
+
         protected override void OnModLoad()
         {
             LogInfo("THE UNRELENTING: MOD CARREGADO COM SUCESSO!");
@@ -308,6 +627,16 @@ namespace Arvak.TheUnrelenting
                 can_be_cured = false,
                 needs_to_be_explored = false
             });
+            AssetManager.traits.add(new ActorTrait
+            {
+                id = BloodlineTraitId,
+                group_id = GroupId,
+                path_icon = "ui/icons/neomodloader",
+                can_be_given = false,
+                can_be_removed = true,
+                can_be_cured = false,
+                needs_to_be_explored = false
+            });
             // Trait privada de velocidade extrema. Nao e um poder editavel;
             // o mod a adiciona e remove apenas durante o castigo de proximidade.
             ActorTrait rush = new ActorTrait
@@ -324,7 +653,9 @@ namespace Arvak.TheUnrelenting
             rush.base_stats["speed"] = PunishingRushSpeedBonus;
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
-            LogInfo("THE UNRELENTING: V0.11.4 TRAUMA TRAIT + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
+            LogInfo("THE UNRELENTING: V0.12.0 BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
             LogInfo("THE UNRELENTING: ANTI-KITE PREPARADO! BONUS_SPEED=" + PunishingRushSpeedBonus.ToString("F0") +
                 " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s; CONFIGURAVEL NO NML.");
             LogInfo("THE UNRELENTING: WITNESS: rastreio de mortes ativo; transmissao a assassino PROVAVEL desligada por padrao.");
@@ -343,12 +674,13 @@ namespace Arvak.TheUnrelenting
         // o mesmo perseguidor, fila, protecoes e logica de morte.
         private static bool HasAnyHaunted(Actor actor)
         {
-            return actor != null && (actor.hasTrait(TraitId) || actor.hasTrait(TraumaTraitId));
+            return actor != null && (actor.hasTrait(TraitId) || actor.hasTrait(TraumaTraitId) || actor.hasTrait(BloodlineTraitId));
         }
 
         private static string GetHauntedKind(Actor actor)
         {
             if (actor == null) return "NENHUM";
+            if (actor.hasTrait(BloodlineTraitId)) return "BLOODLINE";
             if (actor.hasTrait(TraumaTraitId)) return "TRAUMA";
             if (actor.hasTrait(TraitId)) return "NORMAL";
             return "NENHUM";
@@ -1548,6 +1880,44 @@ namespace Arvak.TheUnrelenting
                 LogInfo("THE UNRELENTING: CONTATO COM A VITIMA! ALVO_TEMP_ID=" + victimId +
                     " HOSPEDEIRO_TEMP_ID=" + hostId);
                 Actor victim = _target;
+                // Procurar familia ANTES da morte: o WorldBox pode limpar os
+                // registros de genealogia quando uma unidade desaparece.
+                BloodlineOptions bloodline = ReadBloodlineOptions();
+                Actor plannedHeir = null;
+                int heirGeneration = 0, heirCandidates = 0, inspectedActors = 0;
+                if (bloodline.Transfer)
+                {
+                    _bloodlineExecutions++;
+                    plannedHeir = PickBloodlineHeir(victim, bloodline,
+                        out heirGeneration, out heirCandidates, out inspectedActors);
+                    if (plannedHeir == null)
+                    {
+                        _bloodlineNoProof++;
+                        LogInfo("THE UNRELENTING: BLOODLINE SEM DESCENDENTE COMPROVADO!" +
+                            " VITIMA_TEMP_ID=" + victimId + " ATORES_INSPECIONADOS=" + inspectedActors +
+                            " MAX_GERACOES=" + bloodline.Generations +
+                            " SEM_PROVA=" + _bloodlineNoProof);
+                        if (bloodline.Verbose)
+                        {
+                            // Em testes, relatar quais propriedades de genealogia
+                            // podem ser inspecionadas na sua build, sem inventar parentes.
+                            object vData = ReadMember(victim, "data");
+                            LogInfo("THE UNRELENTING: BLOODLINE DIAGNOSTICO! ACTOR_DATA_TIPO=" +
+                                (vData == null ? "AUSENTE" : vData.GetType().Name) +
+                                " ID_ESTAVEL=" + (GetStableActorId(victim) ?? "AUSENTE") +
+                                " CAMPOS_ACTOR=" + DescribeGenealogyMembers(victim) +
+                                " CAMPOS_DATA=" + DescribeGenealogyMembers(vData) +
+                                " STATUS=RELACAO_NAO_COMPROVADA");
+                        }
+                    }
+                    else if (bloodline.Verbose)
+                    {
+                        LogInfo("THE UNRELENTING: BLOODLINE DESCENDENTE IDENTIFICADO!" +
+                            " VITIMA_TEMP_ID=" + victimId +
+                            " HERDEIRO_TEMP_ID=" + plannedHeir.GetHashCode() +
+                            " GERACAO=" + heirGeneration + " ELEGIVEIS=" + heirCandidates);
+                    }
+                }
                 _entityExecutedVictims.Add(victim);
                 victim.dieSimpleNone();
                 if (!victim.isAlive())
@@ -1557,6 +1927,10 @@ namespace Arvak.TheUnrelenting
                         " HOSPEDEIRO_TEMP_ID=" + hostId + " TOTAL=" + _killsThisChain);
                     _targetQueue.Remove(victim);
                     _knownHaunted.Remove(victim);
+                    // Somente executar esta mutacao SE a morte pela entidade
+                    // foi realmente confirmada. Nunca antes.
+                    if (bloodline.Transfer && plannedHeir != null)
+                        TryBloodlineTransfer(victim, plannedHeir, heirGeneration, bloodline);
                     _target = _targetQueue.Count > 0 ? _targetQueue[0] : null;
                     if (_kiteBoostActive) EndPunishingRush();
                     ResetKiteForNewHostOrTarget();
@@ -1715,6 +2089,10 @@ namespace Arvak.TheUnrelenting
             _traumaExposures.Clear();
             _entityExecutedVictims.Clear();
             _witnessTransferredVictims.Clear();
+            _bloodlineConfigWarned = false;
+            _bloodlineTransfers = 0;
+            _bloodlineExecutions = 0;
+            _bloodlineNoProof = 0;
             _traumaConfigWarned = false;
             _traumaPopulationWarned = false;
             _traumaStatusWarned = false;
@@ -1793,7 +2171,8 @@ namespace Arvak.TheUnrelenting
                 foreach (Actor actor in alive)
                 {
                     if (!current.Contains(actor) || _knownHaunted.Contains(actor)) continue;
-                    _targetQueue.Add(actor);
+                    // Bloodline pode colocar o herdeiro na fila ja na execucao.
+                    if (!_targetQueue.Contains(actor)) _targetQueue.Add(actor);
                     LogInfo("THE UNRELENTING: HAUNTED ENTROU NA FILA! ALVO_TEMP_ID=" +
                         actor.GetHashCode() + " TIPO=" + GetHauntedKind(actor) +
                         " FILA=" + _targetQueue.Count);

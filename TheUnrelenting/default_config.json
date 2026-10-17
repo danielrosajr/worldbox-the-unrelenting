@@ -165,5 +165,31 @@
       "Type": "SWITCH",
       "BoolVal": false
     }
+  ],
+  "Bloodline": [
+    {
+      "Id": "EnableBloodlineTransfer",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "BloodlineChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 100.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
+    },
+    {
+      "Id": "BloodlineMaxGenerations",
+      "Type": "SLIDER",
+      "FloatVal": 3.0,
+      "MinFloatVal": 1.0,
+      "MaxFloatVal": 3.0
+    },
+    {
+      "Id": "VerboseBloodlineLogs",
+      "Type": "SWITCH",
+      "BoolVal": true
+    }
   ]
 }

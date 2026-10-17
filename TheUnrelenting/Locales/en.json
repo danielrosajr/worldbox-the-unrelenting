@@ -64,5 +64,16 @@
   "VerboseTraumaLogs": "Detailed Trauma logs (debug)",
   "VerboseTraumaLogs Description": "Show ignored deaths, cooldown skips and periodic counters. Can be noisy on large worlds.",
   "trait_ArvakTheUnrelenting_HauntedTrauma": "Haunted: Trauma",
-  "trait_ArvakTheUnrelenting_HauntedTrauma_info": "Cursed after witnessing a potentially violent death. The same mysterious entity pursues this creature; the different name identifies the traumatic origin."
+  "trait_ArvakTheUnrelenting_HauntedTrauma_info": "Cursed after witnessing a potentially violent death. The same mysterious entity pursues this creature; the different name identifies the traumatic origin.",
+  "trait_ArvakTheUnrelenting_HauntedBloodline": "Haunted: Bloodline",
+  "trait_ArvakTheUnrelenting_HauntedBloodline_info": "Inherited after the entity killed a confirmed ancestor. The same relentless entity pursues this bloodline heir.",
+  "Bloodline": "Bloodline — The Unrelenting",
+  "EnableBloodlineTransfer": "Transmit the curse to descendants (experimental)",
+  "EnableBloodlineTransfer Description": "OFF by default. After an execution by the entity, transfer Haunted: Bloodline to ONE living descendant, but only when an explicit parent-child link can be verified. No city, surname or family-group guesses.",
+  "BloodlineChancePercent": "Inheritance chance (%)",
+  "BloodlineChancePercent Description": "Chance for the verified heir to inherit the curse after the entity kills an ancestor. Set to 100% to test.",
+  "BloodlineMaxGenerations": "Maximum descendant generations",
+  "BloodlineMaxGenerations Description": "Search direct children first, then grandchildren and great-grandchildren up to this depth (1 to 3). If a closer generation has eligible descendants, prefer it.",
+  "VerboseBloodlineLogs": "Detailed Bloodline diagnostics",
+  "VerboseBloodlineLogs Description": "Show lineage candidate and failure information when the entity executes a victim. Does not create relationships or transmit the curse by itself."
 }

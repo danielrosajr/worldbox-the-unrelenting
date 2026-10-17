@@ -64,5 +64,16 @@
   "VerboseTraumaLogs": "Logs detalhados de trauma (debug)",
   "VerboseTraumaLogs Description": "Exibe mortes ignoradas, bloqueios por cooldown e contadores. Pode gerar muitas linhas.",
   "trait_ArvakTheUnrelenting_HauntedTrauma": "Haunted: Trauma",
-  "trait_ArvakTheUnrelenting_HauntedTrauma_info": "Amaldicoado apos testemunhar uma morte provavelmente violenta. A mesma entidade persegue esta criatura; o nome diferente identifica a origem traumatica."
+  "trait_ArvakTheUnrelenting_HauntedTrauma_info": "Amaldicoado apos testemunhar uma morte provavelmente violenta. A mesma entidade persegue esta criatura; o nome diferente identifica a origem traumatica.",
+  "trait_ArvakTheUnrelenting_HauntedBloodline": "Haunted: Bloodline",
+  "trait_ArvakTheUnrelenting_HauntedBloodline_info": "Maldicao herdada apos a entidade executar um ancestral comprovado. A mesma entidade passa a perseguir o herdeiro.",
+  "Bloodline": "Bloodline — Heranca da maldicao",
+  "EnableBloodlineTransfer": "Transmitir maldicao aos descendentes (experimental)",
+  "EnableBloodlineTransfer Description": "DESLIGADO por padrao. Apos execucao pela entidade, passa Haunted: Bloodline a UM descendente vivo apenas se o vinculo pai-filho for comprovado. Nunca presume parentesco por cidade, sobrenome ou grupo familiar.",
+  "BloodlineChancePercent": "Chance de heranca (%)",
+  "BloodlineChancePercent Description": "Chance de um herdeiro identificado receber a maldicao depois que a entidade executar um ancestral. Use 100% para testes.",
+  "BloodlineMaxGenerations": "Numero maximo de geracoes",
+  "BloodlineMaxGenerations Description": "Busca filhos primeiro, depois netos e bisnetos, conforme o numero escolhido (1 a 3). Da prioridade a geracao mais proxima com herdeiros elegiveis.",
+  "VerboseBloodlineLogs": "Diagnostico detalhado de Bloodline",
+  "VerboseBloodlineLogs Description": "Mostra resultado da busca de descendentes e detalhes basicos quando a entidade executa uma vitima. Nao cria parentes nem transmite maldicao por si so."
 }

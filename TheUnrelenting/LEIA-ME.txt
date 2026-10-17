@@ -1,19 +1,15 @@
-THE UNRELENTING v0.11.4 — HAUNTED: TRAUMA
+THE UNRELENTING v0.12.0 — BLOODLINE
 
-Instalacao: feche o WorldBox e substitua a pasta TheUnrelenting INTEIRA.
-Nao misture arquivos de versoes diferentes.
+Instale a pasta TheUnrelenting completa no diretorio de mods NML.
+A maldicao Haunted: Bloodline exige transmissao ativada no painel.
+Apenas morte CONFIRMADA pela entidade pode iniciar heranca.
+O mod procura um descendente comprovado: filho, neto ou bisneto.
+Se nao reconhecer a genealogia da sua build, nao faz transmissao e registra diagnostico no Player.log.
 
-Haunted (original): atribuicao manual, Origins aleatorio e transmissao ao assassino.
-Haunted: Trauma (nova trait): infeccao por testemunhar morte provavelmente violenta.
-As duas ativam a mesma entidade, a mesma fila e todas as mecanicas anteriores.
+TESTE EM MUNDO DESCARTAVEL COM PAIS E FILHOS IDENTIFICADOS NA GENEALOGIA.
 
-Teste: ative TraumaWitness > EnableTraumaTransfer, configure chance 100%,
-realize uma morte violenta perto de outra criatura e inspecione a trait da testemunha.
-Por seguranca, transmissoes por trauma continuam desligadas por padrao.
+Comando: grep -nE 'BLOODLINE|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
 
-Novas infeccoes por trauma recebem a nova trait. Nao altera retroativamente saves.
-Rollback: restaure a pasta completa v0.11.3; nao use saves com a nova trait
-sem antes tomar as devidas precaucoes.
+Para rollback, restaure v0.11.4. Primeiro remova Haunted: Bloodline do save, se existir.
 
-README.md: passos completos de teste e log.
-Commit: feat: distinguish trauma-origin curses with Haunted Trauma trait
+GitHub: feat: add opt-in Bloodline inheritance with verified descendant links

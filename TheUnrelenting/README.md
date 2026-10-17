@@ -1,4 +1,48 @@
-# The Unrelenting v0.11.4 — Haunted: Trauma
+# The Unrelenting v0.12.0 — Bloodline
+
+## Nova mecanica — a maldicao alcanca a familia
+
+**Importante:** a transmissao e opt-in e **desligada por padrao**. O jogo precisa oferecer um vinculo de parentesco identificavel por reflexao. Nunca transmitimos somente por sobrenome, clan, mesma cidade ou estar na mesma familia: isso nao prova descendencia.
+
+Apos a propria entidade executar um personagem com Haunted, Haunted: Trauma ou Haunted: Bloodline, o mod:
+
+1. Examina as relacoes genealógicas disponiveis no runtime antes de remover a vitima.
+2. Procura filhos vivos; se nao houver descendente elegivel, busca netos e bisnetos (ate o limite escolhido).
+3. Escolhe **apenas um** descendente vivo comprovado, sem maldicao anterior e nao possuido.
+4. Somente **apos confirmar a morte pela entidade**, sorteia a chance e aplica **Haunted: Bloodline**.
+5. Coloca o novo herdeiro na mesma fila; **nao gera uma segunda entidade**.
+
+Nao ocorre heranca quando o alvo morre por fogo, doenca, combate comum ou execucao manual: esses eventos pertencem a The Witness / Trauma Witness. Se a genealogia nativa nao puder ser lida, o mod registra `BLOODLINE SEM DESCENDENTE COMPROVADO` e **nao adivinha** o herdeiro. Em especial, a familia pode existir visualmente mas nao ter IDs de pais e filhos expostos com nomes aceitos pelo nosso adaptador. Esse caso exigira um log de diagnostico e nova adaptacao. A trait Bloodline nao e retroativa em saves antigos.
+
+### Configuracao e teste
+
+Abra NeoModLoader > Mods > The Unrelenting > Configuracao > Bloodline.
+
+- Ative **Transmitir maldicao aos descendentes**.
+- Chance de heranca: 100% (teste).
+- Maximo de geracoes: 3.
+- Diagnostico detalhado: ligado.
+- Desative Origins automatica, Killer Transfer e Trauma Transfer para isolar a experiencia.
+- Use um mundo descartavel e escolha no painel de genealogia do WorldBox uma pessoa com **filho vivo comprovado**. Aplique Haunted ao ancestral. Faca a entidade alcanca-lo.
+
+```bash
+grep -nE 'BLOODLINE|TIPO=BLOODLINE|EXECUCAO CONFIRMADA|error CS|Failed to compile' \
+  ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
+```
+
+**Log esperado quando houver vinculo verificavel:** `BLOODLINE DESCENDENTE IDENTIFICADO!` seguido de `BLOODLINE TRANSMISSAO CONFIRMADA!`. Com parentesco nao resolvido, aparecera `BLOODLINE SEM DESCENDENTE COMPROVADO!`. Sem a chance ser sorteada, `BLOODLINE SORTEIO` registra o numero.
+
+### Compatibilidade
+
+IDs anteriores preservados: `ArvakTheUnrelenting_Haunted` e `ArvakTheUnrelenting_HauntedTrauma`. Nova trait: `ArvakTheUnrelenting_HauntedBloodline`. A fila, Origins, Witness, Trauma Witness, IA adaptativa, possessao, arrancadas e Anti-Kite continuam ativos. Limite de seguranca: ate 6500 criaturas vivas na busca genealogica, executada apenas no momento de morte causada pela entidade.
+
+**Validacao:** pacote e JSON verificados; nao compilado ou testado em WorldBox aqui. Rollback recomendado para v0.11.4 em caso de erro; antes de reverter um save que contenha Haunted: Bloodline, remova a nova trait nele.
+
+**GitHub commit:** `feat: add opt-in Bloodline inheritance with verified descendant links`
+
+---
+
+## Historico: v0.11.4 — Haunted: Trauma
 
 ## Novidade: duas traits, uma mesma entidade
 

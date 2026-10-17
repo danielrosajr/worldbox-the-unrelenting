@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.11.4",
-  "description": "The Unrelenting: distinct Haunted: Trauma trait for Trauma Witness victims, shared curse gameplay and existing mechanics",
+  "version": "0.12.0",
+  "description": "Bloodline: opt-in descendant inheritance after a confirmed entity execution; same pursuer, third curse trait, fail-closed genealogy checks.",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []
