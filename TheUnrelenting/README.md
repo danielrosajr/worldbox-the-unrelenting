@@ -1,44 +1,57 @@
-# The Unrelenting v0.7.0 — One Entity, Many Faces
+# The Unrelenting v0.8.0 — Unpredictable Pursuit
 
-Prototype for WorldBox 0.51.2 build 719 / NeoModLoader.
+Experimental NeoModLoader mod for WorldBox **0.51.2 build 719**, tested baseline on native Ubuntu Steam.
 
-## Current behavior
+## New in v0.8.0
 
-- The custom `Haunted` trait keeps its previous stable ID: `ArvakTheUnrelenting_Haunted`.
-- A **single entity** hunts one target at a time (queue of discovered Haunted creatures).
-- On kill, the same entity selects the next target; its current host remains alive until the queue ends.
-- Every ~22 s for the first hop and ~32 s later (real elapsed seconds) the entity attempts to **switch its possessed host** to a nearby eligible ordinary creature.
-- The old host is not killed and receives cleanup of the native traits added by the mod.
-- Eligible host IDs are limited to common civilized units and animals. Dragons, aliens, UFOs and most bosses are excluded.
-- The last host disappears after the final Haunted target is killed.
+**Each time the supernatural entity assumes a host, it randomly chooses a pursuit speed:**
 
-**Important:** this version uses **body-hopping**, not true actor-species/sprite mutation. A sheep becomes the *new* host; the previous human is released. The same actor does not turn into a sheep. This is a deliberately safer prototype while cross-species visual transformation remains unverified on WorldBox 0.51.2.
+| Mode | Chance | Change to the host |
+| --- | ---: | --- |
+| SLOW | 50% | Adds native `slow` trait temporarily |
+| NORMAL | 35% | Keeps species' natural speed (no speed trait) |
+| FAST | 15% | Adds native `fast` trait temporarily |
 
-## Test
+The selected speed remains active for that host and is rerolled on the next body-hop. This can create slow stalking, ordinary-speed pursuit or an occasional unexpected sprint. A naturally fast species may still move quickly in NORMAL mode.
 
-1. Close WorldBox. Replace the old `TheUnrelenting` directory with the one in this ZIP in the working NML `Mods` path.
-2. Use **only a disposable world**; this mod eliminates units.
-3. Spawn at least 15 ordinary units including humans, sheep, cows, and/or other eligible species on one large island.
-4. Add Haunted to 2-3 separate units; do not give Haunted to the entity host.
-5. Confirm the log has `HAUNTED ENTROU NA FILA`, `ENTIDADE DESPERTOU`, `EXECUCAO CONFIRMADA`, `PROXIMA VITIMA`, `ENTIDADE TROCOU DE HOSPEDEIRO`, and finally `ENTIDADE ENCERRADA`.
-6. If the pursuit finishes too fast to see a host change, place targets farther away, or adjust `FirstHostChangeAfter` and `HostChangeInterval` in `Main.cs` (seconds).
+Only the traits actually added by the mod are removed when a host is released. Hosts with pre-existing `slow`, `fast`, `agile`, or `plague` are excluded to avoid inadvertently deleting native traits through opposite-trait interactions.
+
+## Preserved from v0.7.0
+
+- Stable Haunted trait ID `ArvakTheUnrelenting_Haunted`.
+- Only one supernatural entity; Haunted victims are hunted in a queue.
+- Random host selection from ordinary species: human, elf, sheep, cow etc. (dragons/UFOs not eligible).
+- Body-hopping to nearby **existing** creatures approximately 22 real seconds after activation and every 32 seconds thereafter (subject to available hosts).
+- The current host executes Haunted victims by contact; it survives each kill until the queue is empty.
+- The last host disappears at the end of the chain.
+
+## Ubuntu installation
+
+1. Close WorldBox.
+2. Replace the old `TheUnrelenting` folder in your **working NeoModLoader Mods directory** with the folder from this ZIP.
+3. Open WorldBox; test in a NEW DISPOSABLE WORLD with several eligible ordinary creatures.
+4. Apply Haunted to 2-3 units separated by distance. Watch as hosts change and speed is rerolled.
+5. In `Player.log`, search for `VELOCIDADE=SLOW`, `VELOCIDADE=NORMAL`, `VELOCIDADE=FAST`, `ENTIDADE TROCOU DE HOSPEDEIRO`, `EXECUCAO CONFIRMADA`.
 
 ```bash
-grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
+grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' \
+  ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
 ```
 
-## Known limitations
+If you only see one speed in a short test, run longer or let more host changes happen: speed is random, and a single result is not guaranteed. Watch for `NAO FOI POSSIVEL APLICAR TRAIT=fast` and report it if present.
 
-- AI neutrality and true invulnerability are not solved; Peaceful, Immortal and Super Health are provisional native traits.
-- Host bodies can be identified through abnormal native traits in their info panel.
-- Hosts can die or be attacked normally by the game. The entity will try to reselect one.
-- Swimming, oceans, island transitions, saving/loading active chains and the interactions of body switching with the third-person camera mod have not been validated.
-- Hopping uses nearby existing creatures and restores only native traits that the mod itself added. Worlds saved while a host is possessed can retain temporary modifications.
-- The old actor's normal AI may not instantly resume after body release; this needs testing.
-- No magical visual transformation or real-time sprite swap is performed.
+## Limitations and safety
+
+- **Experimental/unverified in-game** in this release: syntax and archive structure checked; only user testing can confirm execution.
+- Speed uses native traits, which remain visible in the host information panel; full disguise is still pending.
+- `Immortal` and `Super Health` are not absolute invulnerability; `Peaceful` does not guarantee other units will not attack the host.
+- Host changes are possession of another existing actor, not morphing a single actor's species.
+- Native AI can interfere with pathfinding, especially around oceans, crowds and buildings.
+- Do not save a valuable world during testing: active hosts may retain temporary traits in saves, and chain persistence across saves has not been validated.
 
 ## GitHub
 
-Replace existing project files with those in this ZIP (including `Locales`).
-Suggested commit: `feat: chain Haunted victims with a single body-hopping pursuer`
-Tag / version: `v0.7.0` after validation.
+Replace the existing project files with this ZIP's complete `TheUnrelenting` folder (including `Locales`).
+
+Commit: `feat: randomize pursuer speed with slow, normal and fast modes`
+Version: `v0.8.0` (test before publishing a release).

@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.7.0",
-  "description": "One supernatural pursuer, chained Haunted targets, experimental body-hopping across ordinary creatures (prototype)",
+  "version": "0.8.0",
+  "description": "One supernatural pursuer, chained Haunted targets, body-hopping and randomized slow/normal/fast speed for each host (prototype)",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []

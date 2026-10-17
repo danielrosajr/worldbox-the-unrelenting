@@ -1,18 +1,23 @@
-THE UNRELENTING v0.7.0 — PROTOTIPO EXPERIMENTAL
+THE UNRELENTING v0.8.0 - PERSEGUICAO IMPREVISIVEL
 
-Novidades:
-- Uma unica entidade para todas as vitimas Haunted.
-- Depois da primeira execucao, persegue automaticamente a proxima vitima.
-- Tenta trocar de hospedeiro por outra criatura comum proxima, para parecer mudar de forma.
-- Nao altera o sprite ou a especie de um mesmo Actor; troca de corpo.
-- Limpa traits temporarias do antigo hospedeiro.
-- Quando nao houver mais Haunted, o hospedeiro final desaparece.
+NOVIDADE: a cada novo hospedeiro, a entidade sorteia sua velocidade:
+- 50% LENTO: adiciona a trait slow
+- 35% NORMAL: deixa a velocidade natural da especie
+- 15% RAPIDO: adiciona a trait fast
 
-ATENCAO: teste somente em mundo descartavel. A morte e real.
-Use humanos/ovelhas/vacas em uma ilha. Caso as vitimas estejam muito proximas,
-a cadeia pode terminar antes da primeira mudanca de hospedeiro.
+O modo pode mudar novamente quando a entidade troca de hospedeiro.
+As traits adicionadas pelo mod sao removidas quando o hospedeiro e liberado.
 
-Comando de log:
+TESTE (MUNDO DESCARTAVEL):
+1. Feche o WorldBox.
+2. Substitua a pasta TheUnrelenting na pasta Mods utilizada pelo NeoModLoader.
+3. Abra o jogo, crie criaturas comuns e aplique Haunted a 2-3 unidades.
+4. Consulte o log e procure VELOCIDADE=SLOW, NORMAL ou FAST.
+
+COMANDO:
 grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
 
-Github commit: feat: chain Haunted victims with a single body-hopping pursuer
+GITHUB:
+Substituir todos os arquivos antigos pelos do ZIP; a pasta Locales permanece.
+Commit: feat: randomize pursuer speed with slow, normal and fast modes
+Versao: v0.8.0 (publicar release apenas depois do teste).

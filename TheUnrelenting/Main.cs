@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.7.0 - UMA entidade, multiplas vitimas em fila, corpo hospedeiro trocavel.
+    // v0.8.0 - UMA entidade, multiplas vitimas em fila, corpo hospedeiro trocavel, velocidades aleatorias.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -25,6 +25,11 @@ namespace Arvak.TheUnrelenting
         private const float MinHostHopDistance = 3f;
         private const float MaxHostHopDistance = 24f;
         private const bool EnableHostHopping = true;
+        // Probabilidades em porcentagem: lento 50%, normal 35%, rapido 15%.
+        // O modo e sorteado novamente ao assumir outro hospedeiro.
+        private const int SlowChancePercent = 50;
+        private const int NormalChancePercent = 35;
+        private enum PursuitSpeed { Slow, Normal, Fast }
 
         // Apenas as especies comuns predefinidas. IDs podem variar por versao;
         // a lista e verificada contra os assets reais dos atores no mundo.
@@ -34,9 +39,10 @@ namespace Arvak.TheUnrelenting
             "rabbit", "cat", "wolf", "fox", "bear", "goat", "alpaca",
             "capybara", "monkey", "rat", "penguin", "raccoon", "armadillo"
         };
-        private static readonly string[] TemporaryTraitIds = { "slow", "peaceful", "immortal", "super_health" };
-        // Prevenir a perda involuntaria de traits com possiveis opostos.
-        private static readonly string[] OppositeRiskTraits = { "fast", "agile", "plague" };
+        private static readonly string[] CoreTemporaryTraitIds = { "peaceful", "immortal", "super_health" };
+        // Nao usar hospedeiros com traits de velocidade preexistentes. Slow e Fast
+        // podem se opor: aplicá-las poderia apagar uma trait que nao e do mod.
+        private static readonly string[] OppositeRiskTraits = { "slow", "fast", "agile", "plague" };
 
         private readonly System.Random _random = new System.Random();
         private readonly List<Actor> _targetQueue = new List<Actor>();
@@ -54,6 +60,7 @@ namespace Arvak.TheUnrelenting
         private bool _reportedError;
         private bool _warnedNoHost;
         private int _killsThisChain;
+        private PursuitSpeed _currentSpeed = PursuitSpeed.Normal;
 
         protected override void OnModLoad()
         {
@@ -75,7 +82,10 @@ namespace Arvak.TheUnrelenting
                 needs_to_be_explored = false
             });
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.7.0 CADEIA DE VITIMAS + TROCA EXPERIMENTAL DE HOSPEDEIRO ATIVA.");
+            LogInfo("THE UNRELENTING: V0.8.0 CADEIA + HOSPEDEIROS + VELOCIDADE ALEATORIA ATIVOS.");
+            LogInfo("THE UNRELENTING: CHANCES DE VELOCIDADE LENTO=" + SlowChancePercent +
+                "% NORMAL=" + NormalChancePercent + "% RAPIDO=" +
+                (100 - SlowChancePercent - NormalChancePercent) + "%.");
         }
 
         private static bool Usable(Actor a)
@@ -112,11 +122,24 @@ namespace Arvak.TheUnrelenting
             return false;
         }
 
-        private void ApplyTemporaryTraits(Actor a)
+        private PursuitSpeed RollSpeed()
+        {
+            int roll = _random.Next(100);
+            if (roll < SlowChancePercent) return PursuitSpeed.Slow;
+            if (roll < SlowChancePercent + NormalChancePercent) return PursuitSpeed.Normal;
+            return PursuitSpeed.Fast;
+        }
+
+        private void ApplyTemporaryTraits(Actor a, PursuitSpeed speed)
         {
             if (!Usable(a)) return;
             HashSet<string> added = new HashSet<string>();
-            foreach (string id in TemporaryTraitIds)
+            List<string> traits = new List<string>(CoreTemporaryTraitIds);
+            if (speed == PursuitSpeed.Slow) traits.Insert(0, "slow");
+            else if (speed == PursuitSpeed.Fast) traits.Insert(0, "fast");
+            // O modo Normal nao aplica trait de movimento; vale a velocidade
+            // natural da especie, sem alteracao permanente.
+            foreach (string id in traits)
             {
                 if (a.hasTrait(id)) continue;
                 bool invoked = MutateTrait(a, "addTrait", id);
@@ -229,7 +252,8 @@ namespace Arvak.TheUnrelenting
             }
             _host = next;
             _host.cancelAllBeh();
-            ApplyTemporaryTraits(_host);
+            _currentSpeed = RollSpeed();
+            ApplyTemporaryTraits(_host, _currentSpeed);
             _nextHostChangeTime = Time.unscaledTime + (isChange ? HostChangeInterval : FirstHostChangeAfter);
             _lastProgressTime = Time.unscaledTime;
             _lastDistance = _target != null ? _host.distanceToActorTile(_target) : 0f;
@@ -237,7 +261,10 @@ namespace Arvak.TheUnrelenting
                 " ANTERIOR_TEMP_ID=" + (old == null ? "NENHUM" : old.GetHashCode().ToString()) +
                 " NOVO_TEMP_ID=" + next.GetHashCode() +
                 " FORMA_ANTERIOR=" + oldSpecies + " NOVA_FORMA=" + GetAssetId(next) +
-                " ALVO_TEMP_ID=" + (_target == null ? "NENHUM" : _target.GetHashCode().ToString()));
+                " ALVO_TEMP_ID=" + (_target == null ? "NENHUM" : _target.GetHashCode().ToString()) +
+                " VELOCIDADE=" + _currentSpeed.ToString().ToUpperInvariant() +
+                " TRAIT_VELOCIDADE=" + (_currentSpeed == PursuitSpeed.Slow ? "slow" :
+                    (_currentSpeed == PursuitSpeed.Fast ? "fast" : "nenhuma")));
         }
 
         private void EndEntity(string reason, bool vanish)
@@ -259,6 +286,7 @@ namespace Arvak.TheUnrelenting
             _host = null;
             _target = null;
             _killsThisChain = 0;
+            _currentSpeed = PursuitSpeed.Normal;
             _warnedNoHost = false;
         }
 
@@ -273,6 +301,7 @@ namespace Arvak.TheUnrelenting
             _host = null;
             _target = null;
             _killsThisChain = 0;
+            _currentSpeed = PursuitSpeed.Normal;
             _warnedNoHost = false;
             _reportedError = false;
         }
