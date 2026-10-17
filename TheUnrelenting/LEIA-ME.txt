@@ -1,36 +1,3 @@
-THE UNRELENTING - v0.0.1 - Hello World
-=====================================
+The Unrelenting v0.1.0
 
-OBJETIVO:
-Verificar que o NeoModLoader reconhece e executa seu proprio codigo C#.
-Esta versao nao altera o WorldBox e nao abre mensagem na tela. Apenas escreve no log.
-
-INSTALACAO NO LINUX (Steam nativa):
-1. Feche o WorldBox.
-2. Pela Steam > WorldBox > Gerenciar > Explorar arquivos locais, abra a pasta raiz do jogo.
-3. Localize a pasta de mods de usuario onde estao os seus outros mods do NeoModLoader.
-   Ela costuma se chamar Mods na raiz do jogo (diferente de worldbox_Data/StreamingAssets/mods).
-4. Copie a pasta TheUnrelenting deste ZIP para dentro daquela pasta Mods.
-   O resultado deve ser Mods/TheUnrelenting/mod.json e Mods/TheUnrelenting/Main.cs.
-5. Abra o jogo e procure The Unrelenting no menu do NeoModLoader.
-6. Confirme a mensagem no arquivo Player.log, procurando pelo texto:
-   THE UNRELENTING: MOD CARREGADO COM SUCESSO!
-
-COMANDO PARA LOCALIZAR O LOG:
-find "$HOME/.config/unity3d" -name Player.log 2>/dev/null
-
-COMANDO PARA PROCURAR A MENSAGEM (ajuste o caminho se necessario):
-grep -n 'THE UNRELENTING:' "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log"
-
-SE NAO APARECER:
-- Confira se mod.json esta diretamente na pasta TheUnrelenting, sem pasta dupla.
-- Procure mensagens de erro de compilacao no Player.log.
-- Confira se o mod esta habilitado no menu do NeoModLoader.
-- Nao copie os arquivos para a pasta do loader (StreamingAssets/mods).
-
-PROXIMO PASSO:
-Criar e registrar a trait Amaldicoado, sem perseguicao ainda.
-
-REFERENCIAS:
-https://lous12.github.io/worldbox-modding-docs/recipes/first-nml-mod/
-https://github.com/WorldBoxOpenMods/ModLoader/blob/master/api/BasicMod.cs
+Leia o README.md dentro desta pasta para instrucoes, instalacao e testes.

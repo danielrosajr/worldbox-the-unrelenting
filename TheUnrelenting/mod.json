@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.0.1",
-  "description": "The Unrelenting - primeiro teste de carregamento (Hello World).",
+  "version": "0.1.0",
+  "description": "A slow, inevitable horror. Version 0.1.0 registers the Cursed trait.",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []
