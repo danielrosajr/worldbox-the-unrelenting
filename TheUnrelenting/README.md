@@ -1,47 +1,53 @@
-# The Unrelenting — v0.2.0 (Haunted detection)
+# The Unrelenting — v0.3.0 (escolha secreta do perseguidor)
 
-Experimental horror mod for WorldBox **0.51.2 (build 719)** using NeoModLoader, tested by the player on Ubuntu for v0.1.1. **v0.2.0 has not yet been tested in-game.**
+Mod experimental de terror para **WorldBox 0.51.2 (build 719)** com **NeoModLoader**, no Ubuntu.
+A v0.2.0 (detector Haunted) foi **validada em jogo pelo autor**.
+**A v0.3.0 precisa ser testada no seu WorldBox.**
 
-## What's new
+## Novidades da v0.3.0
 
-- Preserves the `Haunted` trait and existing saved trait ID (`ArvakTheUnrelenting_Haunted`).
-- Every 2 real seconds, looks for living units with Haunted.
-- Logs **HAUNTED DETECTADO** only once per detected unit, and **HAUNTED DEIXOU DE ESTAR ATIVO** if the unit no longer appears (e.g. trait removed, death, or world switched).
-- Uses temporary `GetHashCode()` IDs for debug only: **these are NOT persistent character IDs across saves**.
-- No pursuing creature or changes to unit stats yet.
+- Mantem o GUID `Arvak.TheUnrelenting` e a trait `ArvakTheUnrelenting_Haunted` (sem mudar saves anteriores).
+- Preserva o detector da v0.2.0: identifica quando Haunted aparece/desaparece a cada ~2 segundos reais.
+- Para cada unidade Haunted, sorteia **uma unidade viva ja existente** no mundo, sem Haunted e que nao esteja reservada para outra vitima.
+- Registra no log `ALVO_TEMP_ID` e `PERSEGUIDOR_TEMP_ID` para validacao.
+- Se o alvo perder Haunted, o vinculo de perseguidor e descartado; se o perseguidor morrer ou ganhar Haunted, outro pode ser sorteado.
+- Trocar de mundo limpa os vinculos mantidos em memoria.
+- **Nao** altera IA, aparencia, traits, velocidade, resistencia ou dano. O perseguidor **ainda nao persegue nem mata**.
+- Sorteio considera todo o mundo; distancia/mesma ilha serao criterios futuros.
+- `TEMP_ID` usa `GetHashCode()` exclusivamente para diagnostico e NAO e persistente entre jogos/saves.
 
-## Install
+## Como instalar
 
-1. Close WorldBox.
-2. Locate the **working** NeoModLoader `Mods` folder in the game installation.
-3. Replace only the old `TheUnrelenting` folder with the `TheUnrelenting` folder inside this ZIP.
-4. Launch game, open or create a world, apply **Haunted** to one unit.
-5. Wait about 2 seconds and inspect Player.log. Remove Haunted and check the second message.
-
-## Diagnostic command (Ubuntu)
+1. Feche o WorldBox.
+2. No diretorio `Mods` do NeoModLoader, **substitua somente** a pasta antiga `TheUnrelenting` pela pasta `TheUnrelenting` deste ZIP.
+3. Abra o jogo e um mundo com varias criaturas vivas.
+4. Aplique a trait `Haunted` a uma ou duas criaturas diferentes. Aguarde ~2 segundos.
+5. Consulte o `Player.log`. Depois remova Haunted de uma delas e confira a mensagem de desativacao.
 
 ```bash
 grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' \
-  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 40
+  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 50
 ```
 
-Expected message examples:
+### Logs esperados (exemplo)
 
-```text
-THE UNRELENTING: DETECTOR HAUNTED ATIVO (verificacao a cada 2 segundos).
-THE UNRELENTING: HAUNTED DETECTADO! TEMP_ID=...
-THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=...
+```
+THE UNRELENTING: SELETOR DE PERSEGUIDORES ATIVO (verificacao a cada 2 segundos).
+THE UNRELENTING: HAUNTED DETECTADO! TEMP_ID=2322
+THE UNRELENTING: PERSEGUIDOR ESCOLHIDO! ALVO_TEMP_ID=2322 PERSEGUIDOR_TEMP_ID=4567
+THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=2322
 ```
 
-The last message is NOT proof the player manually removed the trait: it also fires if the actor dies or disappears from the current world.
+**Dica:** com uma unica criatura no mapa e Haunted nela, o log avisara que nao existem perseguidores disponiveis. Adicione mais criaturas para testar.
 
-## GitHub update
+## GitHub
 
-Replace `Main.cs`, `mod.json`, `Locales/*.json` and `README.md`. Do not rename the trait's ID.
-Commit: `feat: detect Haunted units in the active world`
-Version: `v0.2.0`; publish a release only after testing.
+- Substituir `Main.cs`, `mod.json`, `README.md`, `LEIA-ME.txt` e os arquivos `Locales/*.json` existentes. Nao excluir o historico nem trocar GUID/ID da trait.
+- Commit: `feat: assign hidden pursuers to Haunted units`
+- Versao: `v0.3.0`.
+- Release: publique so depois de validar em jogo.
 
-## Relevant examples
+## Referencias
 
-- https://github.com/WorldBoxOpenMods/ModExample/blob/master/ExampleModCode.cs
+- https://github.com/WorldBoxOpenMods/ModExample
 - https://github.com/WorldBoxOpenMods/ModLoaderPullRequests/blob/master/api/BasicMod.cs

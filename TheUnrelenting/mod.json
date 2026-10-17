@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.2.0",
-  "description": "The Unrelenting v0.2.0: detects Haunted units in the live world without spawning a pursuer.",
+  "version": "0.3.0",
+  "description": "The Unrelenting v0.3.0: secretly assigns an existing living creature as pursuer for each Haunted unit (log-only prototype).",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []

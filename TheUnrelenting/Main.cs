@@ -7,15 +7,18 @@ namespace Arvak.TheUnrelenting
 {
     public class Main : BasicMod<Main>
     {
-        // Keep these IDs stable to avoid breaking worlds with Haunted already applied.
+        // Identificadores permanentes: nao mudar entre versoes.
         public const string TraitId = "ArvakTheUnrelenting_Haunted";
         public const string GroupId = "ArvakTheUnrelenting_Group";
 
-        // In-memory references: this is only a live-world prototype.
-        // Real persistence across saves will be a later milestone.
+        // Apenas referencias em memoria. Nenhum efeito sobre os perseguidores ainda.
         private HashSet<Actor> _hauntedUnits = new HashSet<Actor>();
-        private float _scanClock = 0f;
-        private bool _reportedScanError = false;
+        private Dictionary<Actor, Actor> _pursuerByTarget = new Dictionary<Actor, Actor>();
+        private HashSet<Actor> _noCandidateNotice = new HashSet<Actor>();
+        private readonly System.Random _random = new System.Random();
+        private object _activeWorldReference;
+        private float _scanClock;
+        private bool _reportedScanError;
 
         protected override void OnModLoad()
         {
@@ -42,10 +45,35 @@ namespace Arvak.TheUnrelenting
             AssetManager.traits.add(haunted);
 
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: DETECTOR HAUNTED ATIVO (verificacao a cada 2 segundos).");
+            LogInfo("THE UNRELENTING: SELETOR DE PERSEGUIDORES ATIVO (verificacao a cada 2 segundos).");
         }
 
-        // Called by Unity. We deliberately scan slowly to limit work in large worlds.
+        private void ResetTracking()
+        {
+            _hauntedUnits.Clear();
+            _pursuerByTarget.Clear();
+            _noCandidateNotice.Clear();
+        }
+
+        // Escolhe uniformemente entre unidades vivas, sem Haunted, nao reservadas.
+        // Reservoir sampling: nao cria uma lista adicional de candidatos.
+        private Actor PickPursuer(List<Actor> alive, HashSet<Actor> haunted,
+                                  HashSet<Actor> reserved)
+        {
+            Actor chosen = null;
+            int eligible = 0;
+            foreach (Actor candidate in alive)
+            {
+                if (haunted.Contains(candidate) || reserved.Contains(candidate))
+                    continue;
+
+                eligible++;
+                if (_random.Next(eligible) == 0)
+                    chosen = candidate;
+            }
+            return chosen;
+        }
+
         private void Update()
         {
             _scanClock += Time.unscaledDeltaTime;
@@ -55,35 +83,90 @@ namespace Arvak.TheUnrelenting
 
             if (World.world == null)
             {
-                // A previously loaded world may have been closed or replaced.
-                _hauntedUnits.Clear();
+                ResetTracking();
+                _activeWorldReference = null;
                 return;
+            }
+
+            // Evita referencias antigas quando outro mundo e carregado.
+            if (!object.ReferenceEquals(_activeWorldReference, World.world))
+            {
+                ResetTracking();
+                _activeWorldReference = World.world;
             }
 
             try
             {
                 HashSet<Actor> current = new HashSet<Actor>();
+                List<Actor> alive = new List<Actor>();
 
                 foreach (Actor actor in World.world.units)
                 {
-                    if (actor == null || !actor.isAlive() || !actor.hasTrait(TraitId))
+                    if (actor == null || !actor.isAlive())
                         continue;
 
-                    current.Add(actor);
-                    if (!_hauntedUnits.Contains(actor))
+                    alive.Add(actor);
+                    if (actor.hasTrait(TraitId))
                     {
-                        // TEMP_ID helps distinguish units in this debug build.
-                        // It is NOT a save-stable identifier.
-                        LogInfo("THE UNRELENTING: HAUNTED DETECTADO! TEMP_ID=" + actor.GetHashCode());
+                        current.Add(actor);
+                        if (!_hauntedUnits.Contains(actor))
+                        {
+                            LogInfo("THE UNRELENTING: HAUNTED DETECTADO! TEMP_ID=" + actor.GetHashCode());
+                        }
                     }
                 }
 
-                foreach (Actor oldActor in _hauntedUnits)
+                foreach (Actor oldTarget in _hauntedUnits)
                 {
-                    if (!current.Contains(oldActor))
+                    if (!current.Contains(oldTarget))
                     {
-                        LogInfo("THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=" + oldActor.GetHashCode());
+                        LogInfo("THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=" + oldTarget.GetHashCode());
+                        _pursuerByTarget.Remove(oldTarget);
+                        _noCandidateNotice.Remove(oldTarget);
                     }
+                }
+
+                // Um perseguidor morto, ou que passou a ter Haunted, nao pode seguir sendo usado.
+                List<Actor> invalidTargets = new List<Actor>();
+                foreach (KeyValuePair<Actor, Actor> pair in _pursuerByTarget)
+                {
+                    if (!current.Contains(pair.Key) || pair.Value == null ||
+                        !pair.Value.isAlive() || current.Contains(pair.Value))
+                    {
+                        invalidTargets.Add(pair.Key);
+                    }
+                }
+                foreach (Actor target in invalidTargets)
+                {
+                    if (current.Contains(target))
+                    {
+                        LogInfo("THE UNRELENTING: PERSEGUIDOR INDISPONIVEL; NOVA ESCOLHA NECESSARIA. ALVO_TEMP_ID=" + target.GetHashCode());
+                    }
+                    _pursuerByTarget.Remove(target);
+                }
+
+                HashSet<Actor> reserved = new HashSet<Actor>(_pursuerByTarget.Values);
+                foreach (Actor target in current)
+                {
+                    if (_pursuerByTarget.ContainsKey(target))
+                        continue;
+
+                    Actor pursuer = PickPursuer(alive, current, reserved);
+                    if (pursuer == null)
+                    {
+                        // Evita repetir o aviso em cada varredura de dois segundos.
+                        if (_noCandidateNotice.Add(target))
+                        {
+                            LogWarning("THE UNRELENTING: NENHUM PERSEGUIDOR DISPONIVEL PARA ALVO_TEMP_ID=" + target.GetHashCode());
+                        }
+                        continue;
+                    }
+
+                    _noCandidateNotice.Remove(target);
+                    _pursuerByTarget[target] = pursuer;
+                    reserved.Add(pursuer);
+                    LogInfo("THE UNRELENTING: PERSEGUIDOR ESCOLHIDO! ALVO_TEMP_ID=" +
+                            target.GetHashCode() + " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode());
                 }
 
                 _hauntedUnits = current;
@@ -91,11 +174,9 @@ namespace Arvak.TheUnrelenting
             }
             catch (Exception error)
             {
-                // During world changes a scan may fail temporarily. Log once,
-                // not every two seconds, so the player log remains readable.
                 if (!_reportedScanError)
                 {
-                    LogWarning("THE UNRELENTING: ERRO AO PROCURAR HAUNTED: " + error);
+                    LogWarning("THE UNRELENTING: ERRO NO SELETOR: " + error);
                     _reportedScanError = true;
                 }
             }

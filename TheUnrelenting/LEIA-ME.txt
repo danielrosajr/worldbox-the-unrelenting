@@ -1,2 +1,3 @@
-The Unrelenting v0.2.0 — detector de unidades com a trait Haunted.
-Leia README.md para instalar e testar no Ubuntu.
+The Unrelenting v0.3.0
+Instalacao, testes e GitHub: leia README.md
+Esta versao SOMENTE SELECIONA perseguidores; nao persegue nem mata.
