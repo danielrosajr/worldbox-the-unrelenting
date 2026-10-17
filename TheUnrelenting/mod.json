@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.1.0",
-  "description": "A slow, inevitable horror. Version 0.1.0 registers the Haunted trait.",
+  "version": "0.1.1",
+  "description": "A slow, inevitable horror. v0.1.1: fixes Haunted trait registration for WorldBox 0.51.2 (719).",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []

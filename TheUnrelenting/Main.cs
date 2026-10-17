@@ -1,46 +1,39 @@
 using NeoModLoader.api;
-using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
     public class Main : BasicMod<Main>
     {
-        // Identificadores estaveis: evitar renomear em versoes futuras.
+        // IDs permanentes: nao mudar para manter compatibilidade com futuros saves.
         public const string TraitId = "ArvakTheUnrelenting_Haunted";
         public const string GroupId = "ArvakTheUnrelenting_Group";
 
         protected override void OnModLoad()
         {
-            // Nosso marcador da v0.0.1 continua existindo.
             LogInfo("THE UNRELENTING: MOD CARREGADO COM SUCESSO!");
 
-            // Grupo proprio na lista de traits.
-            // A API segue o exemplo oficial do projeto ModExample do NeoModLoader.
+            // Na build 719 do WorldBox, a cor do grupo precisa ser uma string.
             ActorTraitGroupAsset group = new ActorTraitGroupAsset()
             {
                 id = GroupId,
                 name = "trait_group_ArvakTheUnrelenting",
-                color = Color.magenta
+                color = "#9755C7"
             };
             AssetManager.trait_groups.add(group);
 
-            // Haunted e uma marca: nao muda atributos e nao nasce naturalmente.
-            // A perseguicao sera implementada em uma versao posterior.
+            // Trait manual, sem bonus, comportamento ou perseguidor por enquanto.
+            // birth e PlayerConfig.unlockTrait nao existem no WorldBox 0.51.2 (719).
             ActorTrait haunted = new ActorTrait()
             {
                 id = TraitId,
                 group_id = GroupId,
-                path_icon = "ui/icons/neomodloader", // Icone provisoria do loader.
-                birth = 0f,
+                path_icon = "ui/icons/neomodloader",
                 can_be_given = true,
                 can_be_removed = true,
                 can_be_cured = false,
                 needs_to_be_explored = false
             };
             AssetManager.traits.add(haunted);
-
-            // Torna a trait selecionavel no editor sem exigir descoberta previa.
-            PlayerConfig.unlockTrait(TraitId);
 
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
         }

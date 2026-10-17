@@ -1,45 +1,60 @@
-# The Unrelenting — v0.1.0 (Haunted)
+# The Unrelenting — v0.1.1 (Haunted)
 
-Mod de terror para WorldBox com NeoModLoader.
+Mod experimental de terror para **WorldBox 0.51.2 (build 719)** com **NeoModLoader**.
 
-## O que esta versão faz
-- Registra a trait **Haunted** (identificador interno `ArvakTheUnrelenting_Haunted`).
-- Cria o grupo **The Unrelenting** no editor de traits.
-- A trait pode ser aplicada e removida pelo jogador, sem alterar atributos.
-- Ainda não invoca nenhum perseguidor.
-- Usa provisoriamente o ícone do NeoModLoader.
+## Correcoes v0.1.1
 
-## Atualização
+O arquivo de erro enviado pelo usuario apontou tres erros de compilacao na v0.1.0:
+
+- `ActorTraitGroupAsset.color` exige `string`, nao `UnityEngine.Color`.
+- `ActorTrait.birth` nao existe na versao instalada.
+- `PlayerConfig.unlockTrait` nao existe na versao instalada.
+
+Estas tres referencias foram corrigidas/removidas. **O carregamento in-game desta versao ainda precisa ser validado pelo usuario.**
+
+## Funcionalidade desta versao
+
+- Registra uma trait manual **Haunted** (ID `ArvakTheUnrelenting_Haunted`).
+- Cria o grupo de traits **The Unrelenting**.
+- Trait pode ser aplicada e removida e nao modifica atributos.
+- Icone temporario: NeoModLoader.
+- Ainda **nao** existe perseguidor nem morte automatica.
+
+## Instalacao (Steam nativa, Linux)
+
 1. Feche o WorldBox.
-2. Vá à pasta `Mods` usada pelo NeoModLoader (aquela onde v0.0.1 funcionou).
-3. Substitua completamente a pasta `TheUnrelenting` pela pasta deste ZIP. Não deixe duas versões com o mesmo GUID.
-4. Abra o WorldBox, entre num mundo, selecione uma criatura e abra o **Trait Editor** na ficha da unidade.
-5. Procure a trait **Haunted** (possivelmente dentro do grupo **The Unrelenting**). Adicione à criatura; verifique se aparece na lista de traits.
-6. Remova a trait e confirme que desaparece.
+2. Abra a pasta `Mods` na **raiz** do WorldBox, a mesma em que a v0.0.1 funcionou.
+3. **Apague a pasta antiga `TheUnrelenting` dentro de `Mods`** (nao apague outros mods).
+4. Extraia o ZIP e coloque a **nova** pasta `TheUnrelenting` ali. Nao deixe duas copias do mesmo mod.
+5. Abra o WorldBox.
+6. Confirme que The Unrelenting aparece no NeoModLoader e procure **Haunted** no editor de traits.
+7. Aplique Haunted em um habitante e veja se aparece na ficha; depois remova.
 
-## Verificação no Ubuntu
+## Diagnostico
+
+Execute apos iniciar o jogo:
 
 ```bash
-find "$HOME/.config/unity3d" -name Player.log -exec grep -HnE 'THE UNRELENTING:|error CS[0-9]+|Exception' {} +
+grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile mod The Unrelenting|Exception'   "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 50
 ```
 
-Log esperado: `THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO!`
+Sinais esperados:
+- `THE UNRELENTING: MOD CARREGADO COM SUCESSO!`
+- `THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO!`
 
-**Atenção:** a confirmação no log significa que o registro da trait foi executado; também é necessário confirmar visualmente a trait no editor e na ficha da unidade.
-
-## Detalhes técnicos
-- GUID do mod (mantido): `Arvak.TheUnrelenting`
-- Trait (corrigida): `ArvakTheUnrelenting_Haunted`
-- Grupo: `ArvakTheUnrelenting_Group`
-- Código: `Main.cs`
-- Idiomas: `Locales/en.json`, `Locales/pt.json` e `Locales/pt_BR.json` (compatibilidade a verificar no jogo).
+Se apenas o primeiro aparecer ou houver um erro novo, compartilhe o log gerado pelo NeoModLoader.
 
 ## GitHub
-- Substituir a versão antiga do código, sem duplicar pastas.
-- Commit sugerido: `feat: add Haunted trait and custom trait group`
-- Versão: `v0.1.0` (publique release após testar).
 
-## Próximos passos
-Identificar unidades com Haunted, escolher um perseguidor e implementar a perseguição lenta com neutralidade e disfarce.
+Substitua no repositorio os arquivos da versao anterior, mantendo o diretorio `Locales`.
 
-API consultada: https://github.com/WorldBoxOpenMods/ModExample/blob/master/content/ExampleTraits.cs
+Commit sugerido:
+
+`fix: restore Haunted trait compatibility with WorldBox 0.51.2`
+
+Versao em `mod.json`: `0.1.1`. Crie release **somente apos testar**.
+
+## Referencia de API
+
+- https://github.com/WorldBoxOpenMods/ModExample/blob/master/content/ExampleTraits.cs (tem exemplos de API antiga)
+- https://github.com/Gear-jake/ClassicalEconomics/blob/main/EconomyModMain.cs (exemplo de cor hexadecimal / sem unlockTrait)
