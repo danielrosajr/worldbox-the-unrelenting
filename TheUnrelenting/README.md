@@ -1,60 +1,47 @@
-# The Unrelenting — v0.1.1 (Haunted)
+# The Unrelenting — v0.2.0 (Haunted detection)
 
-Mod experimental de terror para **WorldBox 0.51.2 (build 719)** com **NeoModLoader**.
+Experimental horror mod for WorldBox **0.51.2 (build 719)** using NeoModLoader, tested by the player on Ubuntu for v0.1.1. **v0.2.0 has not yet been tested in-game.**
 
-## Correcoes v0.1.1
+## What's new
 
-O arquivo de erro enviado pelo usuario apontou tres erros de compilacao na v0.1.0:
+- Preserves the `Haunted` trait and existing saved trait ID (`ArvakTheUnrelenting_Haunted`).
+- Every 2 real seconds, looks for living units with Haunted.
+- Logs **HAUNTED DETECTADO** only once per detected unit, and **HAUNTED DEIXOU DE ESTAR ATIVO** if the unit no longer appears (e.g. trait removed, death, or world switched).
+- Uses temporary `GetHashCode()` IDs for debug only: **these are NOT persistent character IDs across saves**.
+- No pursuing creature or changes to unit stats yet.
 
-- `ActorTraitGroupAsset.color` exige `string`, nao `UnityEngine.Color`.
-- `ActorTrait.birth` nao existe na versao instalada.
-- `PlayerConfig.unlockTrait` nao existe na versao instalada.
+## Install
 
-Estas tres referencias foram corrigidas/removidas. **O carregamento in-game desta versao ainda precisa ser validado pelo usuario.**
+1. Close WorldBox.
+2. Locate the **working** NeoModLoader `Mods` folder in the game installation.
+3. Replace only the old `TheUnrelenting` folder with the `TheUnrelenting` folder inside this ZIP.
+4. Launch game, open or create a world, apply **Haunted** to one unit.
+5. Wait about 2 seconds and inspect Player.log. Remove Haunted and check the second message.
 
-## Funcionalidade desta versao
-
-- Registra uma trait manual **Haunted** (ID `ArvakTheUnrelenting_Haunted`).
-- Cria o grupo de traits **The Unrelenting**.
-- Trait pode ser aplicada e removida e nao modifica atributos.
-- Icone temporario: NeoModLoader.
-- Ainda **nao** existe perseguidor nem morte automatica.
-
-## Instalacao (Steam nativa, Linux)
-
-1. Feche o WorldBox.
-2. Abra a pasta `Mods` na **raiz** do WorldBox, a mesma em que a v0.0.1 funcionou.
-3. **Apague a pasta antiga `TheUnrelenting` dentro de `Mods`** (nao apague outros mods).
-4. Extraia o ZIP e coloque a **nova** pasta `TheUnrelenting` ali. Nao deixe duas copias do mesmo mod.
-5. Abra o WorldBox.
-6. Confirme que The Unrelenting aparece no NeoModLoader e procure **Haunted** no editor de traits.
-7. Aplique Haunted em um habitante e veja se aparece na ficha; depois remova.
-
-## Diagnostico
-
-Execute apos iniciar o jogo:
+## Diagnostic command (Ubuntu)
 
 ```bash
-grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile mod The Unrelenting|Exception'   "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 50
+grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' \
+  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 40
 ```
 
-Sinais esperados:
-- `THE UNRELENTING: MOD CARREGADO COM SUCESSO!`
-- `THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO!`
+Expected message examples:
 
-Se apenas o primeiro aparecer ou houver um erro novo, compartilhe o log gerado pelo NeoModLoader.
+```text
+THE UNRELENTING: DETECTOR HAUNTED ATIVO (verificacao a cada 2 segundos).
+THE UNRELENTING: HAUNTED DETECTADO! TEMP_ID=...
+THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=...
+```
 
-## GitHub
+The last message is NOT proof the player manually removed the trait: it also fires if the actor dies or disappears from the current world.
 
-Substitua no repositorio os arquivos da versao anterior, mantendo o diretorio `Locales`.
+## GitHub update
 
-Commit sugerido:
+Replace `Main.cs`, `mod.json`, `Locales/*.json` and `README.md`. Do not rename the trait's ID.
+Commit: `feat: detect Haunted units in the active world`
+Version: `v0.2.0`; publish a release only after testing.
 
-`fix: restore Haunted trait compatibility with WorldBox 0.51.2`
+## Relevant examples
 
-Versao em `mod.json`: `0.1.1`. Crie release **somente apos testar**.
-
-## Referencia de API
-
-- https://github.com/WorldBoxOpenMods/ModExample/blob/master/content/ExampleTraits.cs (tem exemplos de API antiga)
-- https://github.com/Gear-jake/ClassicalEconomics/blob/main/EconomyModMain.cs (exemplo de cor hexadecimal / sem unlockTrait)
+- https://github.com/WorldBoxOpenMods/ModExample/blob/master/ExampleModCode.cs
+- https://github.com/WorldBoxOpenMods/ModLoaderPullRequests/blob/master/api/BasicMod.cs

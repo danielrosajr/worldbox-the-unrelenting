@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.1.1",
-  "description": "A slow, inevitable horror. v0.1.1: fixes Haunted trait registration for WorldBox 0.51.2 (719).",
+  "version": "0.2.0",
+  "description": "The Unrelenting v0.2.0: detects Haunted units in the live world without spawning a pursuer.",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []

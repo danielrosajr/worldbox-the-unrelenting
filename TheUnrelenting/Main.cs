@@ -1,18 +1,26 @@
+using System;
+using System.Collections.Generic;
 using NeoModLoader.api;
+using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
     public class Main : BasicMod<Main>
     {
-        // IDs permanentes: nao mudar para manter compatibilidade com futuros saves.
+        // Keep these IDs stable to avoid breaking worlds with Haunted already applied.
         public const string TraitId = "ArvakTheUnrelenting_Haunted";
         public const string GroupId = "ArvakTheUnrelenting_Group";
+
+        // In-memory references: this is only a live-world prototype.
+        // Real persistence across saves will be a later milestone.
+        private HashSet<Actor> _hauntedUnits = new HashSet<Actor>();
+        private float _scanClock = 0f;
+        private bool _reportedScanError = false;
 
         protected override void OnModLoad()
         {
             LogInfo("THE UNRELENTING: MOD CARREGADO COM SUCESSO!");
 
-            // Na build 719 do WorldBox, a cor do grupo precisa ser uma string.
             ActorTraitGroupAsset group = new ActorTraitGroupAsset()
             {
                 id = GroupId,
@@ -21,8 +29,6 @@ namespace Arvak.TheUnrelenting
             };
             AssetManager.trait_groups.add(group);
 
-            // Trait manual, sem bonus, comportamento ou perseguidor por enquanto.
-            // birth e PlayerConfig.unlockTrait nao existem no WorldBox 0.51.2 (719).
             ActorTrait haunted = new ActorTrait()
             {
                 id = TraitId,
@@ -36,6 +42,63 @@ namespace Arvak.TheUnrelenting
             AssetManager.traits.add(haunted);
 
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
+            LogInfo("THE UNRELENTING: DETECTOR HAUNTED ATIVO (verificacao a cada 2 segundos).");
+        }
+
+        // Called by Unity. We deliberately scan slowly to limit work in large worlds.
+        private void Update()
+        {
+            _scanClock += Time.unscaledDeltaTime;
+            if (_scanClock < 2f)
+                return;
+            _scanClock = 0f;
+
+            if (World.world == null)
+            {
+                // A previously loaded world may have been closed or replaced.
+                _hauntedUnits.Clear();
+                return;
+            }
+
+            try
+            {
+                HashSet<Actor> current = new HashSet<Actor>();
+
+                foreach (Actor actor in World.world.units)
+                {
+                    if (actor == null || !actor.isAlive() || !actor.hasTrait(TraitId))
+                        continue;
+
+                    current.Add(actor);
+                    if (!_hauntedUnits.Contains(actor))
+                    {
+                        // TEMP_ID helps distinguish units in this debug build.
+                        // It is NOT a save-stable identifier.
+                        LogInfo("THE UNRELENTING: HAUNTED DETECTADO! TEMP_ID=" + actor.GetHashCode());
+                    }
+                }
+
+                foreach (Actor oldActor in _hauntedUnits)
+                {
+                    if (!current.Contains(oldActor))
+                    {
+                        LogInfo("THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=" + oldActor.GetHashCode());
+                    }
+                }
+
+                _hauntedUnits = current;
+                _reportedScanError = false;
+            }
+            catch (Exception error)
+            {
+                // During world changes a scan may fail temporarily. Log once,
+                // not every two seconds, so the player log remains readable.
+                if (!_reportedScanError)
+                {
+                    LogWarning("THE UNRELENTING: ERRO AO PROCURAR HAUNTED: " + error);
+                    _reportedScanError = true;
+                }
+            }
         }
     }
 }

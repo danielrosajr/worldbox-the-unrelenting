@@ -1,2 +1,2 @@
-The Unrelenting v0.1.1 (Haunted) — correcao de compilacao para WorldBox 0.51.2 (719).
-Leia README.md para instalar e testar.
+The Unrelenting v0.2.0 — detector de unidades com a trait Haunted.
+Leia README.md para instalar e testar no Ubuntu.
