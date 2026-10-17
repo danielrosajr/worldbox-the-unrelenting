@@ -53,5 +53,34 @@
       "Type": "SWITCH",
       "BoolVal": false
     }
+  ],
+  "PursuitAI": [
+    {
+      "Id": "EnableAdaptiveTracking",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "OverrideNormalBehaviors",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "EnableStuckRescue",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "StuckThresholdSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 18.0,
+      "MinFloatVal": 10.0,
+      "MaxFloatVal": 90.0
+    },
+    {
+      "Id": "VerbosePursuitLogs",
+      "Type": "SWITCH",
+      "BoolVal": false
+    }
   ]
 }

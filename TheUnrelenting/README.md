@@ -1,61 +1,50 @@
-# The Unrelenting — v0.11.0 The Witness
+# The Unrelenting — v0.11.1 Relentless Pursuit
 
-WorldBox 0.51.2 (build 719), NeoModLoader, Ubuntu/Linux.
+WorldBox 0.51.2 build 719 • NeoModLoader • Ubuntu/Linux.
 
-## Summary
+Built on the tested v0.11.0 The Witness code. Keeps Haunted, Origins, recurring origin attempts, one-entity victim queue, body hopping, randomized speed, sudden rush, probable-killer detection and experimental killer transmission.
 
-This release preserves Origins, body hopping, victim queue, randomized speed and sudden rush. It adds **The Witness**, a conservative detection path when a Haunted unit dies by an external cause.
+## New in v0.11.1
 
-**Important limit:** the observed kill-count increment + proximity is a **probable killer** rather than an authenticated attacker/death event. It will not handle every weapon, death type, or ambiguous battle. It errs on the side of **no transmission**.
+- **Adaptive pursuit**: movement orders every 1.6 s when >50 tiles away, 0.8 s at 15–50, 0.35 s at 5–15, and 0.18 s at <=5. Entire-world/kill-counter scan stays once every 2 real seconds to reduce CPU usage.
+- **Anti-distraction**: `cancelAllBeh()` once every 4.5 real seconds followed by `goTo(target.current_tile, false)` to counter sleep/normal activities. May interfere with some native AI actions.
+- **Stall rescue**: after 18 real seconds without a 1+ tile improvement, try jumping into another eligible existing body at least 4 tiles closer to the victim. Prefer bodies 6–22 tiles from the victim. This does NOT make terrestrial creatures swim and does not guarantee inter-island crossing without a body on the other side.
+- New NML settings group **Pursuit AI** for toggles, timeout, extra logs. Defaults ON for adaptive movement, anti-distraction and rescue.
+- No global debug/pathfinding setting changes; no teleports of an existing unit; no extra trait markers.
 
-## NML settings
+## Install
 
-New group **The Witness**:
+Close WorldBox, back up any valued world and replace your existing `Mods/TheUnrelenting` folder with the included folder. Use a disposable world for this experimental version.
 
-- `EnableWitnessTracking` — on by default, logs deaths and probable killers.
-- `EnableKillerTransfer` — **off by default**, experimental transfer to a uniquely identified probable killer.
-- `MaxKillerDistance` — 8 tiles by default (2–15).
-- `VerboseWitnessLogs` — off by default (noisy debug diagnostics).
+## Test A — follow moving target
 
-Your preexisting Origins settings remain under **Origins**.
+Apply Haunted to one unit on the same landmass as several animals. Observe movement and check log for `PROGRESSO CADEIA`. The log now includes `PROXIMA_CORRECAO_SEG`.
 
-## Test plan (use a disposable world)
+## Test B — ocean
 
-1. Close WorldBox and replace the entire `TheUnrelenting` mod folder with this package.
-2. Disable Origins automatic starts and keep Witness Tracking **on**, Killer Transfer **off** initially.
-3. Place a few humans or orcs in a fighting scenario; mark **only the intended victim** Haunted.
-4. Let a normal creature kill this victim before the entity reaches it. Check the log.
-5. Look for `WITNESS ASSASSINO PROVAVEL!` (one nearby actor increased its `kills` counter), or a clear `SEM AUTOR SEGURO` message.
-6. Once attribution looks correct in a controlled test, enable `EnableKillerTransfer`; repeat using a NEW victim.
-7. Inspect the probable killer's trait list for Haunted and the next target assignment. Check that the entity's own executions **do not** transmit Haunted via Witness.
-8. Test a crowded battle to confirm ambiguous deaths do not transmit.
+Create two islands. Place the target Haunted on one; on the other add a candidate host (e.g. sheep). **Place a third compatible unmarked body on the target's island** to make a water-escape via possession possible. After about 18 real seconds without progress, check for `PURSUIT RESGATE POR TROCA DE CORPO!`. Without any eligible target-side body, it is expected that the entity may remain unable to reach the target. This is a known limitation, not success.
 
-Command:
+## Test C — sleep
+
+Keep the entity's host alive for long enough to see whether native sleep interrupts pursuit. `Override normal activities` can be toggled off for comparison.
+
+## Diagnostics
 
 ```bash
-grep -nE 'WITNESS|HAUNTED ENTROU|EXECUCAO CONFIRMADA|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
+grep -nE 'PURSUIT|PROGRESSO CADEIA|WITNESS TRANSMISSAO|CONTATO COM A VITIMA|EXECUCAO CONFIRMADA|error CS|Failed to compile|ERRO NA PERSEGUICAO' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
 ```
 
-## Diagnostic interpretation
+`PURSUIT SEM CAMINHO / SEM RESGATE DISPONIVEL!` indicates possible water/obstacle/stalled pursuit with no available alternative body; it does not prove water is the cause. `PURSUIT RESGATE POR TROCA DE CORPO!` confirms a fallback reassignment and reports previous/new distance.
 
-- `WITNESS ASSASSINO PROVAVEL!` — one plausible candidate; **not** incontrovertible proof of the killer.
-- `WITNESS TRANSMISSAO AO ASSASSINO PROVAVEL!` — Haunted added to that candidate when enabled.
-- `WITNESS MORTE HAUNTED SEM AUTOR SEGURO!` — no transfer; no unique nearby kill increment.
-- `WITNESS CONTADOR DE ABATES INACESSIVEL!` — cannot read the counter; no transmission.
+## Notes and limitations
 
-## Known limitations
-
-- This build reads `ActorData.kills` by reflection. The exact update timing remains unverified in live-game combat.
-- A 2-second snapshot may miss a killing actor who dies, moves away, gets several kills, or uses ranged attacks.
-- Proximity + counter delta may still select an unrelated killer in a busy battle. Therefore transfer is opt-in and experimental.
-- Witness tracking is not a Harmony damage-event hook and does not classify fire, lightning, or accidents.
-- No Trauma Witness or family inheritance yet; those belong to future releases.
-- Identity tracking uses in-memory Actor references and resets on world reload, as in prior versions.
+- This code has not been compiled inside WorldBox in this environment; this is an experimental build.
+- The rescue heuristic uses distances and evidence of stalled progress rather than guaranteed landmass/path connectivity. An eligible body on a closer *different* island might still fail and require another hop.
+- Continuous rapid `goTo()` calls can affect game navigation; test with low population before using on larger maps.
+- The mod does not truly make land animals swim. A host already across a sea with **no additional eligible body** on the victim side can remain stranded.
+- Do not rely on in-memory state across world reload; previous limitation still applies.
 
 ## GitHub
 
-Replace source and locales, add Witness configuration items in default_config.json, version `v0.11.0`.
-
-Commit: `feat: add experimental Witness killer detection and curse transfer`
-
-Rollback: install the v0.10.2 ZIP after closing WorldBox.
+Replace all files with the release package. Commit: `feat: add adaptive pursuit AI and stalled-host rescue`
+Version: `v0.11.1`. Roll back to `v0.11.0` if necessary.

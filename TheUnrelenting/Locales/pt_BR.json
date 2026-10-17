@@ -21,5 +21,16 @@
   "MaxKillerDistance": "Distancia maxima do assassino (tiles)",
   "MaxKillerDistance Description": "Limite de distancia entre a posicao da morte e o candidato. Distancias pequenas reduzem falsos positivos, mas podem ignorar armas de longo alcance.",
   "VerboseWitnessLogs": "Diagnostico detalhado de Witness",
-  "VerboseWitnessLogs Description": "Mostra os contadores internos no log a cada verificacao com vitimas Haunted. Recomendado apenas para testes."
+  "VerboseWitnessLogs Description": "Mostra os contadores internos no log a cada verificacao com vitimas Haunted. Recomendado apenas para testes.",
+  "PursuitAI": "IA de Perseguicao — The Unrelenting",
+  "EnableAdaptiveTracking": "Rastreamento adaptativo da vitima",
+  "EnableAdaptiveTracking Description": "Atualiza o destino mais rapido perto da vitima (0,18 s muito perto; 1,6 s longe). A varredura global continua a cada 2 s.",
+  "OverrideNormalBehaviors": "Interromper atividades normais",
+  "OverrideNormalBehaviors Description": "Interrompe periodicamente a rotina do hospedeiro (inclusive dormir) para priorizar a perseguicao. Experimental.",
+  "EnableStuckRescue": "Trocar de corpo quando travar",
+  "EnableStuckRescue Description": "Se a distancia nao melhorar por um periodo prolongado, tenta possuir outra criatura elegivel mais perto da vitima. Ajuda com agua e obstaculos, mas requer um hospedeiro disponivel.",
+  "StuckThresholdSeconds": "Tempo ate resgate (segundos reais)",
+  "StuckThresholdSeconds Description": "Tempo sem progresso significativo antes de tentar outro corpo. Medido em segundos reais, nao acelera com 5x.",
+  "VerbosePursuitLogs": "Logs detalhados da IA",
+  "VerbosePursuitLogs Description": "Registra interrupcoes extras de comportamento. Progresso e resgate ja aparecem no log mesmo desligado."
 }

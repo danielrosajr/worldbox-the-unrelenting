@@ -1,18 +1,19 @@
-The Unrelenting v0.11.0 — The Witness
+The Unrelenting v0.11.1 — Relentless Pursuit
 
-1. Feche o WorldBox; substitua a pasta completa TheUnrelenting na pasta Mods.
-2. No NML, abra The Witness (configuracoes do mod).
-3. Mantenha Rastrear mortes de Haunted LIGADO e Transmitir ao assassino provavel DESLIGADO no primeiro teste.
-4. Em mundo descartavel, marque Haunted em uma unidade e deixe OUTRA unidade mata-la.
-5. Verifique os logs. Se o assassino provavel estiver correto, ligue a transmissao experimental e repita.
+Atualize substituindo a pasta inteira TheUnrelenting na pasta Mods.
 
-Comando de log:
-grep -nE 'WITNESS|HAUNTED ENTROU|EXECUCAO CONFIRMADA|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
+Novo painel: NeoModLoader > Mods > The Unrelenting > Configuracao > IA de Perseguicao.
 
-AVISO: candidato identificado por contador de abates + proximidade NAO e comprovacao perfeita do assassino.
-Em caso de ambiguidade o mod NAO transmite. Execucoes feitas pela entidade nao transmitem pelo Witness.
+Novidades: atualizacao de destino conforme distancia, reset periodico de tarefas normais,
+troca de hospedeiro quando ficar sem progresso por ~18 segundos reais.
 
-GitHub: substituir os arquivos anteriores por estes, manter Locales e default_config.json.
-Commit: feat: add experimental Witness killer detection and curse transfer
-Versao: v0.11.0
-Rollback: v0.10.2.
+Travessia de mar: o mod NAO obriga animais terrestres a nadar. Precisa de
+um hospedeiro elegivel mais perto da vitima, idealmente na ilha de destino.
+
+Use mundo descartavel. Se falhar, volte a v0.11.0.
+
+Comando:
+grep -nE 'PURSUIT|PROGRESSO CADEIA|WITNESS TRANSMISSAO|EXECUCAO CONFIRMADA|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
+
+GitHub: substitua os arquivos da versao anterior.
+Commit: feat: add adaptive pursuit AI and stalled-host rescue

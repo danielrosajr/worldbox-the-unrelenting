@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.11.0 - The Witness: observacao conservadora da morte de Haunted e transmissao experimental opcional.
+    // v0.11.1 - Relentless Pursuit (The Witness preservado): observacao conservadora da morte de Haunted e transmissao experimental opcional.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -116,6 +116,34 @@ namespace Arvak.TheUnrelenting
         private float _nextBurstCheckAt;
         private bool _burstCleanupWarned;
 
+        // Perseguicao adaptativa: consulta de posicao mais precisa quando o alvo
+        // esta perto, sem varrer TODAS as unidades mais de uma vez a cada 2s.
+        // Recuperacao de impasses usa troca de hospedeiro, nao altera
+        // pathfinding global e nunca teleporta diretamente uma unidade.
+        private const string PursuitConfigGroup = "PursuitAI";
+        private const string CfgAdaptive = "EnableAdaptiveTracking";
+        private const string CfgAntiDistraction = "OverrideNormalBehaviors";
+        private const string CfgRescue = "EnableStuckRescue";
+        private const string CfgStuckSeconds = "StuckThresholdSeconds";
+        private const string CfgPursuitLogs = "VerbosePursuitLogs";
+        private struct PursuitOptions
+        {
+            public bool Adaptive;
+            public bool OverrideBehaviors;
+            public bool Rescue;
+            public float StuckSeconds;
+            public bool Verbose;
+        }
+        private float _nextMotionTickAt;
+        private float _nextMoveCommandAt;
+        private float _nextBehaviorOverrideAt;
+        private float _lastSignificantProgressAt;
+        private float _bestTrackedDistance;
+        private float _nextRescueWarningAt;
+        private bool _pursuitOptionsWarned;
+        private Actor _trackedTarget;
+        private Actor _trackedHost;
+
         // The Witness: nao adivinha o autor de uma morte por mera proximidade.
         // Cruza (1) uma vitima HAUNTED que realmente morreu, (2) aumento
         // exatamente de 1 no contador nativo de abates e (3) proximidade.
@@ -162,8 +190,9 @@ namespace Arvak.TheUnrelenting
                 needs_to_be_explored = false
             });
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.11.0 THE WITNESS + ORIGINS + CADEIA + ARRANCADAS ATIVAS.");
+            LogInfo("THE UNRELENTING: V0.11.1 RELENTLESS PURSUIT + THE WITNESS + ORIGINS ATIVOS.");
             LogInfo("THE UNRELENTING: WITNESS: rastreio de mortes ativo; transmissao a assassino PROVAVEL desligada por padrao.");
+            LogInfo("THE UNRELENTING: PURSUIT AI: precisao por proximidade e resgate por possessao configuraveis.");
             LogInfo("THE UNRELENTING: ORIGINS: menu do NML > Mods > The Unrelenting > Configuracao.");
             LogInfo("THE UNRELENTING: ORIGINS: aleatoria DESLIGADA por padrao; Haunted manual sempre disponivel.");
             LogInfo("THE UNRELENTING: CHANCES DE VELOCIDADE LENTO=" + SlowChancePercent +
@@ -284,6 +313,41 @@ namespace Arvak.TheUnrelenting
                 }
             }
             return options;
+        }
+
+        private PursuitOptions ReadPursuitOptions()
+        {
+            PursuitOptions opts = new PursuitOptions
+            {
+                Adaptive = true,
+                OverrideBehaviors = true,
+                Rescue = true,
+                StuckSeconds = 18f,
+                Verbose = false
+            };
+            try
+            {
+                ModConfig config = GetConfig();
+                if (config == null) return opts;
+                var group = config[PursuitConfigGroup];
+                opts.Adaptive = (bool)group[CfgAdaptive].GetValue();
+                opts.OverrideBehaviors = (bool)group[CfgAntiDistraction].GetValue();
+                opts.Rescue = (bool)group[CfgRescue].GetValue();
+                opts.StuckSeconds = Mathf.Clamp(Convert.ToSingle(group[CfgStuckSeconds].GetValue()), 10f, 90f);
+                opts.Verbose = (bool)group[CfgPursuitLogs].GetValue();
+                _pursuitOptionsWarned = false;
+            }
+            catch (Exception e)
+            {
+                // Usar defaults seguros sem impedir o funcionamento das versoes anteriores.
+                if (!_pursuitOptionsWarned)
+                {
+                    LogWarning("THE UNRELENTING: PURSUIT CONFIG INDISPONIVEL; usando defaults: " +
+                        e.GetType().Name + ": " + e.Message);
+                    _pursuitOptionsWarned = true;
+                }
+            }
+            return opts;
         }
 
         // APIs de dados do jogo mudam entre builds. Evitamos assumir a
@@ -799,6 +863,178 @@ namespace Arvak.TheUnrelenting
             return near ?? fallback;
         }
 
+        // Um novo alvo ou corpo reinicia o medidor de progresso.
+        private void ResetPursuitProgress()
+        {
+            _trackedHost = _host;
+            _trackedTarget = _target;
+            _lastSignificantProgressAt = Time.unscaledTime;
+            _bestTrackedDistance = Usable(_host) && Usable(_target) ?
+                _host.distanceToActorTile(_target) : float.MaxValue;
+            _nextMotionTickAt = 0f;
+            _nextMoveCommandAt = 0f;
+            _nextBehaviorOverrideAt = Time.unscaledTime + 3f;
+        }
+
+        private static float MotionTickSeconds(float distance, bool adaptive)
+        {
+            if (!adaptive) return 2f;
+            if (distance > 50f) return 1.6f;
+            if (distance > 15f) return 0.8f;
+            if (distance > 5f) return 0.35f;
+            return 0.18f;
+        }
+
+        // Resgate: outra criatura JA EXISTENTE, significativamente mais proxima
+        // da vitima. Funciona para ilhas separadas se ha hospedeiro elegivel
+        // disponivel do lado da vitima; caso contrario, nenhuma travessia e prometida.
+        private Actor FindRescueHost(Actor currentHost, Actor target)
+        {
+            if (World.world == null || !Usable(currentHost) || !Usable(target)) return null;
+            float oldD = currentHost.distanceToActorTile(target);
+            if (oldD < 7f) return null;
+            Actor chosen = null;
+            Actor fallback = null;
+            int candidates = 0;
+            float closestScore = float.MaxValue;
+            foreach (Actor actor in World.world.units)
+            {
+                if (actor == null || object.ReferenceEquals(actor, currentHost) ||
+                    !IsAllowedHost(actor, _knownHaunted, currentHost) ||
+                    actor.hasTrait(TraitId)) continue;
+                float distanceToTarget = actor.distanceToActorTile(target);
+                // Um pouco de distancia preserva a sensacao de aproximacao.
+                if (distanceToTarget < 2.5f || distanceToTarget > oldD - 4f) continue;
+                // Escolher preferencialmente hospedeiros a 6-22 tiles da vitima.
+                if (distanceToTarget >= 6f && distanceToTarget <= 22f)
+                {
+                    candidates++;
+                    if (_random.Next(candidates) == 0) chosen = actor;
+                }
+                else
+                {
+                    float score = Mathf.Abs(distanceToTarget - 14f);
+                    if (score < closestScore)
+                    {
+                        closestScore = score;
+                        fallback = actor;
+                    }
+                }
+            }
+            return chosen ?? fallback;
+        }
+
+        private void TryRescueStalledPursuit(float distance, PursuitOptions opts)
+        {
+            if (!opts.Rescue || distance <= 5f ||
+                Time.unscaledTime - _lastSignificantProgressAt < opts.StuckSeconds) return;
+            Actor old = _host;
+            Actor alternative = FindRescueHost(old, _target);
+            if (alternative == null)
+            {
+                if (Time.unscaledTime >= _nextRescueWarningAt)
+                {
+                    LogInfo("THE UNRELENTING: PURSUIT SEM CAMINHO / SEM RESGATE DISPONIVEL! " +
+                        "HOSPEDEIRO_TEMP_ID=" + old.GetHashCode() + " DISTANCIA=" +
+                        distance.ToString("F1") +
+                        " MOTIVO=POSSIVEL_AGUA_OBSTACULO_OU_ALVO_MOVEL; " +
+                        "nenhum outro hospedeiro mais proximo disponivel.");
+                    _nextRescueWarningAt = Time.unscaledTime + 25f;
+                }
+                // Nao bombardear a busca a cada 0.2s se faltam hospedeiros.
+                _lastSignificantProgressAt = Time.unscaledTime - opts.StuckSeconds + 10f;
+                return;
+            }
+            int oldId = old.GetHashCode();
+            float newDistance = alternative.distanceToActorTile(_target);
+            SetHost(alternative, true);
+            LogInfo("THE UNRELENTING: PURSUIT RESGATE POR TROCA DE CORPO! " +
+                "ANTERIOR_TEMP_ID=" + oldId + " NOVO_TEMP_ID=" + alternative.GetHashCode() +
+                " DISTANCIA_ANTERIOR=" + distance.ToString("F1") +
+                " NOVA_DISTANCIA=" + newDistance.ToString("F1") +
+                " POSSIVEL_SEPARACAO_POR_AGUA=True");
+        }
+
+        // Apenas dois Actors sao avaliados frequentemente. O scan global,
+        // incluindo Witness e Origins, continua limitado a 2 segundos reais.
+        private void UpdatePursuitMotion()
+        {
+            if (World.world == null || !object.ReferenceEquals(World.world, _activeWorldReference) ||
+                !Usable(_host) || !Usable(_target)) return;
+            float now = Time.unscaledTime;
+            if (now < _nextMotionTickAt) return;
+            PursuitOptions opts = ReadPursuitOptions();
+            float distance = _host.distanceToActorTile(_target);
+            _nextMotionTickAt = now + MotionTickSeconds(distance, opts.Adaptive);
+            if (!object.ReferenceEquals(_trackedHost, _host) ||
+                !object.ReferenceEquals(_trackedTarget, _target)) ResetPursuitProgress();
+            if (distance < _bestTrackedDistance - 1.0f)
+            {
+                _bestTrackedDistance = distance;
+                _lastSignificantProgressAt = now;
+            }
+            UpdateSuddenBurst();
+            if (distance <= ContactDistance)
+            {
+                int victimId = _target.GetHashCode();
+                int hostId = _host.GetHashCode();
+                LogInfo("THE UNRELENTING: CONTATO COM A VITIMA! ALVO_TEMP_ID=" + victimId +
+                    " HOSPEDEIRO_TEMP_ID=" + hostId);
+                Actor victim = _target;
+                victim.dieSimpleNone();
+                if (!victim.isAlive())
+                {
+                    _killsThisChain++;
+                    LogInfo("THE UNRELENTING: EXECUCAO CONFIRMADA! ALVO_TEMP_ID=" + victimId +
+                        " HOSPEDEIRO_TEMP_ID=" + hostId + " TOTAL=" + _killsThisChain);
+                    _targetQueue.Remove(victim);
+                    _knownHaunted.Remove(victim);
+                    _target = _targetQueue.Count > 0 ? _targetQueue[0] : null;
+                    if (_target != null)
+                    {
+                        LogInfo("THE UNRELENTING: PROXIMA VITIMA! NOVO_ALVO_TEMP_ID=" +
+                            _target.GetHashCode() + " HOSPEDEIRO_TEMP_ID=" + hostId +
+                            " RESTANTES=" + _targetQueue.Count);
+                        ResetPursuitProgress();
+                    }
+                    else EndEntity("CADEIA_CONCLUIDA", true);
+                    return;
+                }
+                LogWarning("THE UNRELENTING: EXECUCAO NAO CONFIRMADA! ALVO_TEMP_ID=" + victimId);
+                return;
+            }
+
+            // Neutraliza tarefas normais (incluindo sono) periodicamente, mas
+            // NAO a cada frame, evitando resetar todo o pathfinding constantemente.
+            if (opts.OverrideBehaviors && now >= _nextBehaviorOverrideAt)
+            {
+                _host.cancelAllBeh();
+                _nextBehaviorOverrideAt = now + 4.5f;
+                if (opts.Verbose)
+                    LogInfo("THE UNRELENTING: PURSUIT ROTINA NORMAL INTERROMPIDA! " +
+                        "HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode());
+            }
+            // Verificacoes de proximidade podem ser muito frequentes; nao
+            // reiniciar a navegacao a cada 0,18s para evitar tremores.
+            if (now >= _nextMoveCommandAt)
+            {
+                _host.goTo(_target.current_tile, false);
+                _nextMoveCommandAt = now + Mathf.Max(0.35f, MotionTickSeconds(distance, opts.Adaptive));
+            }
+            TryRescueStalledPursuit(distance, opts);
+            if (now - _lastProgressTime >= ProgressLogInterval)
+            {
+                LogInfo("THE UNRELENTING: PROGRESSO CADEIA ALVO_TEMP_ID=" +
+                    _target.GetHashCode() + " HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
+                    " DISTANCIA=" + distance.ToString("F1") +
+                    " DISTANCIA_ANTERIOR=" + _lastDistance.ToString("F1") +
+                    " RESTANTES=" + _targetQueue.Count +
+                    " PROXIMA_CORRECAO_SEG=" + MotionTickSeconds(distance, opts.Adaptive).ToString("F2"));
+                _lastDistance = distance;
+                _lastProgressTime = now;
+            }
+        }
+
         private void SetHost(Actor next, bool isChange)
         {
             if (!Usable(next)) return;
@@ -820,6 +1056,7 @@ namespace Arvak.TheUnrelenting
             _nextHostChangeTime = Time.unscaledTime + (isChange ? HostChangeInterval : FirstHostChangeAfter);
             _lastProgressTime = Time.unscaledTime;
             _lastDistance = _target != null ? _host.distanceToActorTile(_target) : 0f;
+            ResetPursuitProgress();
             LogInfo("THE UNRELENTING: " + (isChange ? "ENTIDADE TROCOU DE HOSPEDEIRO!" : "ENTIDADE DESPERTOU!") +
                 " ANTERIOR_TEMP_ID=" + (old == null ? "NENHUM" : old.GetHashCode().ToString()) +
                 " NOVO_TEMP_ID=" + next.GetHashCode() +
@@ -854,6 +1091,10 @@ namespace Arvak.TheUnrelenting
             _burstCleanupWarned = false;
             _nextBurstCheckAt = 0f;
             _warnedNoHost = false;
+            _trackedHost = null;
+            _trackedTarget = null;
+            _nextMotionTickAt = 0f;
+            _nextMoveCommandAt = 0f;
         }
 
         private void ResetForWorld()
@@ -892,12 +1133,33 @@ namespace Arvak.TheUnrelenting
             _witnessDeaths = 0;
             _witnessConfirmedCandidates = 0;
             _witnessTransfers = 0;
+            _trackedHost = null;
+            _trackedTarget = null;
+            _nextMotionTickAt = 0f;
+            _nextMoveCommandAt = 0f;
+            _nextBehaviorOverrideAt = 0f;
+            _lastSignificantProgressAt = 0f;
+            _bestTrackedDistance = float.MaxValue;
+            _nextRescueWarningAt = 0f;
+            _pursuitOptionsWarned = false;
         }
 
         private void Update()
         {
             _scanClock += Time.unscaledDeltaTime;
-            if (_scanClock < ScanInterval) return;
+            if (_scanClock < ScanInterval)
+            {
+                try { UpdatePursuitMotion(); }
+                catch (Exception e)
+                {
+                    if (!_reportedError)
+                    {
+                        LogWarning("THE UNRELENTING: ERRO NA PERSEGUICAO RAPIDA: " + e);
+                        _reportedError = true;
+                    }
+                }
+                return;
+            }
             _scanClock = 0f;
             if (World.world == null)
             {
@@ -1006,54 +1268,9 @@ namespace Arvak.TheUnrelenting
                         _nextHostChangeTime = Time.unscaledTime + 10f;
                 }
 
-                if (!Usable(_target) || !Usable(_host)) return;
-                // O mesmo hospedeiro pode acelerar inesperadamente.
-                UpdateSuddenBurst();
-                float distance = _host.distanceToActorTile(_target);
-                if (distance <= ContactDistance)
-                {
-                    int victimId = _target.GetHashCode();
-                    int hostId = _host.GetHashCode();
-                    LogInfo("THE UNRELENTING: CONTATO COM A VITIMA! ALVO_TEMP_ID=" + victimId +
-                        " HOSPEDEIRO_TEMP_ID=" + hostId);
-                    _target.dieSimpleNone();
-                    if (!_target.isAlive())
-                    {
-                        _killsThisChain++;
-                        LogInfo("THE UNRELENTING: EXECUCAO CONFIRMADA! ALVO_TEMP_ID=" + victimId +
-                            " HOSPEDEIRO_TEMP_ID=" + hostId + " TOTAL=" + _killsThisChain);
-                        _targetQueue.Remove(_target);
-                        _knownHaunted.Remove(_target);
-                        _target = _targetQueue.Count > 0 ? _targetQueue[0] : null;
-                        if (_target != null)
-                        {
-                            LogInfo("THE UNRELENTING: PROXIMA VITIMA! NOVO_ALVO_TEMP_ID=" +
-                                _target.GetHashCode() + " HOSPEDEIRO_TEMP_ID=" + hostId +
-                                " RESTANTES=" + _targetQueue.Count);
-                        }
-                        else
-                        {
-                            EndEntity("CADEIA_CONCLUIDA", true);
-                        }
-                        return;
-                    }
-                    LogWarning("THE UNRELENTING: EXECUCAO NAO CONFIRMADA! ALVO_TEMP_ID=" + victimId);
-                }
-                else
-                {
-                    _host.goTo(_target.current_tile, false);
-                }
-
-                if (Time.unscaledTime - _lastProgressTime >= ProgressLogInterval)
-                {
-                    LogInfo("THE UNRELENTING: PROGRESSO CADEIA ALVO_TEMP_ID=" +
-                        _target.GetHashCode() + " HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
-                        " DISTANCIA=" + distance.ToString("F1") +
-                        " DISTANCIA_ANTERIOR=" + _lastDistance.ToString("F1") +
-                        " RESTANTES=" + _targetQueue.Count);
-                    _lastDistance = distance;
-                    _lastProgressTime = Time.unscaledTime;
-                }
+                // O loop global permanece a cada 2s; movimento e contato
+                // sao atualizados com intervalos adaptativos independentes.
+                UpdatePursuitMotion();
                 _reportedError = false;
             }
             catch (Exception e)

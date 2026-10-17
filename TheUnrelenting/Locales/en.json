@@ -21,5 +21,16 @@
   "MaxKillerDistance": "Maximum killer distance (tiles)",
   "MaxKillerDistance Description": "Maximum distance between the death location and the probable killer. Shorter ranges reduce false positives but miss ranged attacks.",
   "VerboseWitnessLogs": "Detailed Witness snapshots (debug)",
-  "VerboseWitnessLogs Description": "Log internal counts every scan while a Haunted victim is alive. Useful for testing; noisy in normal gameplay."
+  "VerboseWitnessLogs Description": "Log internal counts every scan while a Haunted victim is alive. Useful for testing; noisy in normal gameplay.",
+  "PursuitAI": "Pursuit AI — The Unrelenting",
+  "EnableAdaptiveTracking": "Adaptive target tracking",
+  "EnableAdaptiveTracking Description": "Refresh pursuit orders faster near the victim (0.18 seconds very close; 1.6 seconds when far). Global world scanning remains every 2 seconds.",
+  "OverrideNormalBehaviors": "Interrupt normal activities",
+  "OverrideNormalBehaviors Description": "Periodically interrupt the possessed creature's normal activities (including sleep) to favor continuous pursuit. Experimental.",
+  "EnableStuckRescue": "Body-hop when pursuit stalls",
+  "EnableStuckRescue Description": "If distance to victim does not improve for an extended period, possess another eligible creature closer to the victim. Helps with water and obstacles, but does not guarantee crossings without an eligible host.",
+  "StuckThresholdSeconds": "Stalled pursuit threshold (real seconds)",
+  "StuckThresholdSeconds Description": "Time without significant progress before attempting an alternative host. Measured in real seconds; game speed has no effect.",
+  "VerbosePursuitLogs": "Detailed pursuit AI logs",
+  "VerbosePursuitLogs Description": "Logs extra behavior overrides. Core progress and rescue events are logged even when this is off."
 }
