@@ -1,4 +1,46 @@
-# The Unrelenting v0.11.3 — No More Games
+# The Unrelenting v0.11.4 — Haunted: Trauma
+
+## Novidade: duas traits, uma mesma entidade
+
+A **v0.11.4** permite identificar a origem da maldicao na ficha da criatura:
+
+| Trait | Como e aplicada | Perseguicao |
+|---|---|---|
+| **Haunted** (`ArvakTheUnrelenting_Haunted`) | Manual, Origins aleatorio e transferencia ao assassino provavel (The Witness) | Normal |
+| **Haunted: Trauma** (`ArvakTheUnrelenting_HauntedTrauma`) | Contagio por testemunhar morte provavelmente violenta, quando Trauma Witness estiver ativo | Exatamente a mesma IA, fila, troca de hospedeiro, arrancadas, Anti-Kite e execucao |
+
+- As duas traits pertencem ao mesmo grupo e sao tratadas como *maldicoes* no codigo.
+- **Haunted: Trauma** nao e selecionavel manualmente no editor de traits: apenas o sistema de trauma a aplica. Ela continua aparecendo na ficha do ator afetado.
+- A entidade nao abre um segundo perseguidor por haver dois tipos; ambas entram na **mesma fila**.
+- Para origens automaticas, o mod usa **Haunted** normal. Para trauma, aplica exclusivamente **Haunted: Trauma**.
+- Nao adiciona uma segunda trait a alguem que ja estiver amaldiçoado por qualquer uma delas.
+- Preserva o ID da trait Haunted original para nao perder compatibilidade com saves.
+- Quem ja recebeu a trait normal por trauma em um mundo criado nas versoes anteriores **nao e convertido retroativamente**: esta versao marca novas transmissoes.
+- Se uma pessoa morrer com qualquer variante, o sistema The Witness pode acompanhar a morte (desde que habilitado). A transferencia ao assassino usa Haunted normal; isso identifica o **novo mecanismo de infeccao**, nao uma heranca automatica do nome anterior.
+- Nao ha diagnostico separado no jogo: a trait aparece na ficha e o tipo tambem consta no Player.log como `TIPO=TRAUMA` ou `TIPO=NORMAL`.
+- Trauma Witness continua **desligado por padrao** para nao infectar populacoes involuntariamente.
+
+### Teste recomendado
+
+1. Em um mundo descartavel, desligue Origins automatico e The Witness > transferencia ao assassino.
+2. Ative TraumaWitness > Detectar mortes violentas e Transmitir Haunted por trauma.
+3. Configure chance para 100% e cooldown para 10 segundos.
+4. Faca um combatente matar outro proximo de uma testemunha humanoide (sem Haunted).
+5. Inspecione a ficha da testemunha: deve mostrar **Haunted: Trauma**, nao Haunted comum.
+6. Confira a perseguicao e o log:
+
+```bash
+grep -nE 'TRAIT HAUNTED: TRAUMA|TRAUMA TRANSMISSAO|HAUNTED ENTROU NA FILA|ALVO DEFINIDO|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 100
+```
+
+Para confirmar a variante normal, marque manualmente outra unidade com **Haunted** e veja `TIPO=NORMAL` no log.
+
+**Limite:** nao compilado nem executado no WorldBox aqui; teste a v0.11.4 antes de usar saves importantes. Para rollback, restaure a pasta completa da v0.11.3. Remova a nova trait dos saves antes de voltar a uma versao anterior.
+
+**GitHub:** `feat: distinguish trauma-origin curses with Haunted Trauma trait`
+
+---
+
 
 Mod de terror para WorldBox 0.51.2 (build 719) usando NeoModLoader.
 

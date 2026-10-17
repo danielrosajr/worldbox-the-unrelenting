@@ -6,13 +6,17 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.11.3 - Trauma Witness (The Witness e Relentless Pursuit preservados): observacao conservadora da morte de Haunted e transmissao experimental opcional.
+    // v0.11.4 - Haunted: Trauma: marca visual propria para maldicoes de origem traumatica. Perseguicao compartilhada com Haunted.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
     public class Main : BasicMod<Main>
     {
+        // Mantenha o ID original inalterado: saves antigos continuam legiveis.
         public const string TraitId = "ArvakTheUnrelenting_Haunted";
+        // Novo ID permanente. Qualquer unidade com UMA destas duas traits
+        // entra na mesma fila e e perseguida pela mesma entidade.
+        public const string TraumaTraitId = "ArvakTheUnrelenting_HauntedTrauma";
         public const string GroupId = "ArvakTheUnrelenting_Group";
         private const string AntiKiteBoostTraitId = "ArvakTheUnrelenting_PunishingRush";
         // Trait temporaria e nao selecionavel. Registrada apos AssetManager.traits.add().
@@ -193,7 +197,8 @@ namespace Arvak.TheUnrelenting
         private float _nextKiteDebugLogAt;
 
 
-        // The Witness: nao adivinha o autor de uma morte por mera proximidade.
+        // The Witness: cobre ambas as variantes (Haunted e Haunted: Trauma).
+        // Nao adivinha o autor de uma morte por mera proximidade.
         // Cruza (1) uma vitima HAUNTED que realmente morreu, (2) aumento
         // exatamente de 1 no contador nativo de abates e (3) proximidade.
         // SEM hook de dano confirmado, isso e um CANDIDATO, nao certeza absoluta.
@@ -291,6 +296,18 @@ namespace Arvak.TheUnrelenting
                 can_be_cured = false,
                 needs_to_be_explored = false
             });
+            // A origem traumatica e distinguivel na ficha da criatura,
+            // mas continua a acionar TODO o sistema de perseguicao e Witness.
+            AssetManager.traits.add(new ActorTrait
+            {
+                id = TraumaTraitId,
+                group_id = GroupId,
+                path_icon = "ui/icons/neomodloader",
+                can_be_given = false,
+                can_be_removed = true,
+                can_be_cured = false,
+                needs_to_be_explored = false
+            });
             // Trait privada de velocidade extrema. Nao e um poder editavel;
             // o mod a adiciona e remove apenas durante o castigo de proximidade.
             ActorTrait rush = new ActorTrait
@@ -306,7 +323,8 @@ namespace Arvak.TheUnrelenting
             AssetManager.traits.add(rush);
             rush.base_stats["speed"] = PunishingRushSpeedBonus;
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.11.3 TRAUMA WITNESS + NO MORE GAMES + RELENTLESS PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
+            LogInfo("THE UNRELENTING: V0.11.4 TRAUMA TRAIT + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
             LogInfo("THE UNRELENTING: ANTI-KITE PREPARADO! BONUS_SPEED=" + PunishingRushSpeedBonus.ToString("F0") +
                 " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s; CONFIGURAVEL NO NML.");
             LogInfo("THE UNRELENTING: WITNESS: rastreio de mortes ativo; transmissao a assassino PROVAVEL desligada por padrao.");
@@ -319,6 +337,21 @@ namespace Arvak.TheUnrelenting
                 (100 - SlowChancePercent - NormalChancePercent) + "%.");
             LogInfo("THE UNRELENTING: ARRANCADAS CONFIGURADAS! ATIVO=" + EnableSuddenBurst +
                 " CHANCE_POR_TENTATIVA=" + BurstChancePercent + "% DURACAO=3-5.5s REAL.");
+        }
+
+        // Centralizar o teste e importante: todas as origens compartilham
+        // o mesmo perseguidor, fila, protecoes e logica de morte.
+        private static bool HasAnyHaunted(Actor actor)
+        {
+            return actor != null && (actor.hasTrait(TraitId) || actor.hasTrait(TraumaTraitId));
+        }
+
+        private static string GetHauntedKind(Actor actor)
+        {
+            if (actor == null) return "NENHUM";
+            if (actor.hasTrait(TraumaTraitId)) return "TRAUMA";
+            if (actor.hasTrait(TraitId)) return "NORMAL";
+            return "NENHUM";
         }
 
         private static bool Usable(Actor a)
@@ -817,7 +850,7 @@ namespace Arvak.TheUnrelenting
                     "TRANSFERIR=" + options.Transfer);
                 if (!options.Transfer) continue;
                 // Nao aceitar hospedeiro, vitima marcada ou candidato falecido.
-                if (!Usable(candidate) || current.Contains(candidate) ||
+                if (!Usable(candidate) || current.Contains(candidate) || HasAnyHaunted(candidate) ||
                     object.ReferenceEquals(candidate, _host)) continue;
                 if (MutateTrait(candidate, "addTrait", TraitId) && candidate.hasTrait(TraitId))
                 {
@@ -994,8 +1027,8 @@ namespace Arvak.TheUnrelenting
                     " CHANCE=" + chance.ToString("F1") + "% SORTEIO=" + roll.ToString("F1") +
                     " EXPOSICOES_ANTERIORES=" + exposures);
                 if (roll >= chance) continue;
-                if (!Usable(witness) || current.Contains(witness) || witness.hasTrait(TraitId)) continue;
-                if (MutateTrait(witness, "addTrait", TraitId) && witness.hasTrait(TraitId))
+                if (!Usable(witness) || current.Contains(witness) || HasAnyHaunted(witness)) continue;
+                if (MutateTrait(witness, "addTrait", TraumaTraitId) && witness.hasTrait(TraumaTraitId))
                 {
                     current.Add(witness); // ja entra na fila no MESMO scan.
                     _traumaLastTransferAt = Time.unscaledTime;
@@ -1003,6 +1036,7 @@ namespace Arvak.TheUnrelenting
                     LogInfo("THE UNRELENTING: TRAUMA TRANSMISSAO CONFIRMADA! " +
                         "VITIMA_TEMP_ID=" + victim.GetHashCode() +
                         " NOVO_HAUNTED_TEMP_ID=" + witness.GetHashCode() +
+                        " TRAIT=" + TraumaTraitId + " ORIGEM=TRAUMA" +
                         " TOTAL_TRAUMA=" + _traumaTransfers +
                         " COOLDOWN_SEG=" + opts.Cooldown.ToString("F0"));
                 }
@@ -1434,7 +1468,7 @@ namespace Arvak.TheUnrelenting
             {
                 if (actor == null || object.ReferenceEquals(actor, currentHost) ||
                     !IsAllowedHost(actor, _knownHaunted, currentHost) ||
-                    actor.hasTrait(TraitId)) continue;
+                    HasAnyHaunted(actor)) continue;
                 float distanceToTarget = actor.distanceToActorTile(target);
                 // Um pouco de distancia preserva a sensacao de aproximacao.
                 if (distanceToTarget < 2.5f || distanceToTarget > oldD - 4f) continue;
@@ -1736,7 +1770,7 @@ namespace Arvak.TheUnrelenting
                 {
                     if (!Usable(actor)) continue;
                     alive.Add(actor);
-                    if (actor.hasTrait(TraitId)) current.Add(actor);
+                    if (HasAnyHaunted(actor)) current.Add(actor);
                 }
 
                 _antiKiteOptions = ReadAntiKiteOptions();
@@ -1749,7 +1783,7 @@ namespace Arvak.TheUnrelenting
                 ObserveWitnessDeaths(alive, current, witness);
                 ObserveTraumaDeaths(alive, current, trauma);
 
-                // Origins aplica Haunted em UMA unidade por evento.
+                // Origins aplica Haunted NORMAL em UMA unidade por evento.
                 // Novas origens recorrentes aguardam o fim da cadeia anterior.
                 UpdateOrigins(alive, current);
                 SnapshotWitness(alive, current, witness);
@@ -1761,7 +1795,8 @@ namespace Arvak.TheUnrelenting
                     if (!current.Contains(actor) || _knownHaunted.Contains(actor)) continue;
                     _targetQueue.Add(actor);
                     LogInfo("THE UNRELENTING: HAUNTED ENTROU NA FILA! ALVO_TEMP_ID=" +
-                        actor.GetHashCode() + " FILA=" + _targetQueue.Count);
+                        actor.GetHashCode() + " TIPO=" + GetHauntedKind(actor) +
+                        " FILA=" + _targetQueue.Count);
                 }
                 foreach (Actor old in _knownHaunted)
                 {
@@ -1788,6 +1823,7 @@ namespace Arvak.TheUnrelenting
                         LogInfo("THE UNRELENTING: ALVO DEFINIDO! ANTERIOR_TEMP_ID=" +
                             (prev == null ? "NENHUM" : prev.GetHashCode().ToString()) +
                             " NOVO_TEMP_ID=" + _target.GetHashCode() +
+                            " TIPO=" + GetHauntedKind(_target) +
                             " HAUNTED_RESTANTES=" + _targetQueue.Count);
                     }
                 }

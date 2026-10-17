@@ -1,11 +1,19 @@
-THE UNRELENTING v0.11.3 — TRAUMA WITNESS
+THE UNRELENTING v0.11.4 — HAUNTED: TRAUMA
 
-Extraia e substitua toda a pasta TheUnrelenting. Nao misture versoes.
-Configuracao: NML > Mods > The Unrelenting > Configuracao > TraumaWitness.
-Transferencia por trauma desligada por padrao. Ative para testes em um mundo descartavel.
-Apenas mortes com indicio de abate proximo ou status queimando confirmado podem iniciar trauma.
-Uma unica testemunha humanoide elegivel pode herdar Haunted a cada morte, com cooldown global.
-As outras mecanicas da v0.11.2 foram preservadas.
+Instalacao: feche o WorldBox e substitua a pasta TheUnrelenting INTEIRA.
+Nao misture arquivos de versoes diferentes.
 
-Veja README.md para passos de teste, limitações e comando de logs.
-Commit: feat: add opt-in Trauma Witness transmission for violent deaths
+Haunted (original): atribuicao manual, Origins aleatorio e transmissao ao assassino.
+Haunted: Trauma (nova trait): infeccao por testemunhar morte provavelmente violenta.
+As duas ativam a mesma entidade, a mesma fila e todas as mecanicas anteriores.
+
+Teste: ative TraumaWitness > EnableTraumaTransfer, configure chance 100%,
+realize uma morte violenta perto de outra criatura e inspecione a trait da testemunha.
+Por seguranca, transmissoes por trauma continuam desligadas por padrao.
+
+Novas infeccoes por trauma recebem a nova trait. Nao altera retroativamente saves.
+Rollback: restaure a pasta completa v0.11.3; nao use saves com a nova trait
+sem antes tomar as devidas precaucoes.
+
+README.md: passos completos de teste e log.
+Commit: feat: distinguish trauma-origin curses with Haunted Trauma trait

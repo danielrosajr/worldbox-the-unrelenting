@@ -52,15 +52,17 @@
   "TrackViolentDeaths": "Detect probable violent deaths",
   "TrackViolentDeaths Description": "Track dead creatures and nearby kill-counter changes; a verified burning status can also qualify. Detection by polling is approximate. Does not infect anyone on its own.",
   "EnableTraumaTransfer": "Transmit Haunted to a nearby witness (experimental)",
-  "EnableTraumaTransfer Description": "OFF by default. After a probable violent death, choose a single nearby humanoid by distance and roll to receive Haunted. This does not establish actual line of sight.",
+  "EnableTraumaTransfer Description": "OFF by default. After a probably violent death, one nearby eligible humanoid may receive Haunted: Trauma (not normal Haunted). Proximity does not prove sight.",
   "IncludeNonHauntedDeaths": "Include victims without Haunted",
   "IncludeNonHauntedDeaths Description": "Allow an unrelated probable homicide or burning death to start the curse through a nearby witness; otherwise only deaths of previously Haunted creatures qualify.",
   "TraumaRadius": "Witness proximity radius (tiles)",
   "TraumaRadius Description": "Maximum distance between the last known death position and a nearby humanoid witness. Proximity is NOT verified visibility.",
   "TraumaChancePercent": "Base trauma chance (%)",
-  "TraumaChancePercent Description": "Chance for one randomly selected nearby witness to receive Haunted. Repeated exposures add at most 15 percentage points; up to 100% in testing.",
+  "TraumaChancePercent Description": "Chance for the selected witness to gain Haunted: Trauma. Prior exposures add up to 15 percentage points, capped at 100%.",
   "TraumaCooldownSeconds": "Minimum time between trauma transmissions (real s)",
   "TraumaCooldownSeconds Description": "Global real-time cooldown after successful transfer to prevent a mass chain of infections. Does not stop manually assigned Haunted.",
   "VerboseTraumaLogs": "Detailed Trauma logs (debug)",
-  "VerboseTraumaLogs Description": "Show ignored deaths, cooldown skips and periodic counters. Can be noisy on large worlds."
+  "VerboseTraumaLogs Description": "Show ignored deaths, cooldown skips and periodic counters. Can be noisy on large worlds.",
+  "trait_ArvakTheUnrelenting_HauntedTrauma": "Haunted: Trauma",
+  "trait_ArvakTheUnrelenting_HauntedTrauma_info": "Cursed after witnessing a potentially violent death. The same mysterious entity pursues this creature; the different name identifies the traumatic origin."
 }
