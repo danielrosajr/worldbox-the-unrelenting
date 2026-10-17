@@ -29,5 +29,29 @@
       "Type": "SWITCH",
       "BoolVal": false
     }
+  ],
+  "TheWitness": [
+    {
+      "Id": "EnableWitnessTracking",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "EnableKillerTransfer",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "MaxKillerDistance",
+      "Type": "SLIDER",
+      "FloatVal": 8.0,
+      "MinFloatVal": 2.0,
+      "MaxFloatVal": 15.0
+    },
+    {
+      "Id": "VerboseWitnessLogs",
+      "Type": "SWITCH",
+      "BoolVal": false
+    }
   ]
 }

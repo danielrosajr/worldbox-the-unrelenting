@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.10.2",
-  "description": "Fix repeated Origins: optional recurrence, responsive settings and clearer attempt logs.",
+  "version": "0.11.0",
+  "description": "The Witness: conservative Haunted death and probable killer detection, with optional experimental curse transmission.",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []

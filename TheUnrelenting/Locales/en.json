@@ -12,5 +12,14 @@
   "AttemptIntervalSeconds Description": "Real seconds between automatic origin attempts when quick test mode is disabled.",
   "TestMode Description": "For testing only: when random origins are enabled, attempt a guaranteed Haunted origin after 10 real seconds if an eligible creature exists. Repeat works when enabled.",
   "RepeatAutomaticOrigins": "Repeat random origins after a curse ends",
-  "RepeatAutomaticOrigins Description": "When enabled, schedule another random origin after all existing Haunted victims are gone. Never starts a second chain while the previous one is active."
+  "RepeatAutomaticOrigins Description": "When enabled, schedule another random origin after all existing Haunted victims are gone. Never starts a second chain while the previous one is active.",
+  "TheWitness": "The Witness — The Unrelenting",
+  "EnableWitnessTracking": "Track Haunted deaths",
+  "EnableWitnessTracking Description": "Observe Haunted deaths and correlate nearby actors whose confirmed kill counters increased. Does not cause transmission.",
+  "EnableKillerTransfer": "Transmit Haunted to probable killer (experimental)",
+  "EnableKillerTransfer Description": "OFF by default. When exactly one nearby actor gains one kill during the scan, transfer Haunted to that candidate. Attribution is inferred, not a guaranteed damage-source event.",
+  "MaxKillerDistance": "Maximum killer distance (tiles)",
+  "MaxKillerDistance Description": "Maximum distance between the death location and the probable killer. Shorter ranges reduce false positives but miss ranged attacks.",
+  "VerboseWitnessLogs": "Detailed Witness snapshots (debug)",
+  "VerboseWitnessLogs Description": "Log internal counts every scan while a Haunted victim is alive. Useful for testing; noisy in normal gameplay."
 }

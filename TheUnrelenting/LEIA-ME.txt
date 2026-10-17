@@ -1,26 +1,18 @@
-THE UNRELENTING v0.10.2 - ORIGINS (WorldBox 0.51.2 / NML)
+The Unrelenting v0.11.0 — The Witness
 
-1. Feche o jogo e substitua a pasta antiga TheUnrelenting pela nova.
-2. Certifique-se de copiar tambem o NOVO default_config.json.
-3. No jogo: Mods -> The Unrelenting -> Mod Configuration.
-4. Padrão: origem aleatoria DESLIGADA. Haunted manual continua funcionando.
-5. Para testar automaticamente: ATIVE "Origens aleatorias raras" e "Teste rapido".
-   Em um mundo novo com humanos/elfos/anoes/orcs, uma criatura devera receber
-   Haunted apos aproximadamente 10 segundos REAIS.
-6. Verifique Player.log com o comando descrito em README.md.
+1. Feche o WorldBox; substitua a pasta completa TheUnrelenting na pasta Mods.
+2. No NML, abra The Witness (configuracoes do mod).
+3. Mantenha Rastrear mortes de Haunted LIGADO e Transmitir ao assassino provavel DESLIGADO no primeiro teste.
+4. Em mundo descartavel, marque Haunted em uma unidade e deixe OUTRA unidade mata-la.
+5. Verifique os logs. Se o assassino provavel estiver correto, ligue a transmissao experimental e repita.
 
-Geracao automatica unica por mundo carregado nesta sessao; nao e
-persistente entre salvamentos. Use mundo descartavel.
+Comando de log:
+grep -nE 'WITNESS|HAUNTED ENTROU|EXECUCAO CONFIRMADA|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
 
-GitHub: adicionar default_config.json; substituir Main.cs, mod.json,
-Locales e documentacao pelos da nova versao.
-Commit: feat: add opt-in rare Haunted origins and NML settings panel
+AVISO: candidato identificado por contador de abates + proximidade NAO e comprovacao perfeita do assassino.
+Em caso de ambiguidade o mod NAO transmite. Execucoes feitas pela entidade nao transmitem pelo Witness.
 
-Correcoes: descricoes das quatro opcoes da tela Origins.
-Commit: fix: add missing Origins configuration descriptions
-
-V0.10.2: corrigida a origem automatica unica por mundo; agora ha opcao para repeticao.
-Para testar no NML: ative Origens aleatorias, Repetir origens e Teste rapido, crie humanos e mantenha a simulacao ativa. Apos a primeira execucao e o fim da cadeia, aguarde pelo menos outros 10 segundos reais para outra origem.
-O modo normal nao e garantido: 10% a cada 30 segundos reais pode resultar em varias tentativas sem eventos.
-Logs: ORIGINS TENTATIVA!, ORIGINS HAUNTED GERADA!, ORIGINS SORTEIO SEM EVENTO!, ORIGINS SEM ELEGIVEIS!
-Commit: fix: allow recurring Haunted origins and improve origin diagnostics
+GitHub: substituir os arquivos anteriores por estes, manter Locales e default_config.json.
+Commit: feat: add experimental Witness killer detection and curse transfer
+Versao: v0.11.0
+Rollback: v0.10.2.

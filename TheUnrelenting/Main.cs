@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.10.2 - Origins recorrentes: repeticao configuravel e logs de tentativas.
+    // v0.11.0 - The Witness: observacao conservadora da morte de Haunted e transmissao experimental opcional.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -116,6 +116,32 @@ namespace Arvak.TheUnrelenting
         private float _nextBurstCheckAt;
         private bool _burstCleanupWarned;
 
+        // The Witness: nao adivinha o autor de uma morte por mera proximidade.
+        // Cruza (1) uma vitima HAUNTED que realmente morreu, (2) aumento
+        // exatamente de 1 no contador nativo de abates e (3) proximidade.
+        // SEM hook de dano confirmado, isso e um CANDIDATO, nao certeza absoluta.
+        // Fail closed: sem dados, multiplos candidatos ou incerteza -> nao infectar.
+        private const string WitnessConfigGroup = "TheWitness";
+        private const string CfgWitnessTracking = "EnableWitnessTracking";
+        private const string CfgWitnessTransfer = "EnableKillerTransfer";
+        private const string CfgWitnessMaxDistance = "MaxKillerDistance";
+        private const string CfgWitnessVerbose = "VerboseWitnessLogs";
+        private struct WitnessOptions
+        {
+            public bool Tracking;
+            public bool Transfer;
+            public float MaxDistance;
+            public bool Verbose;
+        }
+        private readonly Dictionary<Actor, int> _previousKills = new Dictionary<Actor, int>();
+        private readonly Dictionary<Actor, Vector2> _lastHauntedPositions = new Dictionary<Actor, Vector2>();
+        private bool _witnessConfigWarned;
+        private bool _witnessCountersWarned;
+        private int _witnessDeaths;
+        private int _witnessConfirmedCandidates;
+        private int _witnessTransfers;
+
+
         protected override void OnModLoad()
         {
             LogInfo("THE UNRELENTING: MOD CARREGADO COM SUCESSO!");
@@ -136,7 +162,8 @@ namespace Arvak.TheUnrelenting
                 needs_to_be_explored = false
             });
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.10.2 ORIGINS RECORRENTES + CADEIA + VELOCIDADE + ARRANCADAS ATIVAS.");
+            LogInfo("THE UNRELENTING: V0.11.0 THE WITNESS + ORIGINS + CADEIA + ARRANCADAS ATIVAS.");
+            LogInfo("THE UNRELENTING: WITNESS: rastreio de mortes ativo; transmissao a assassino PROVAVEL desligada por padrao.");
             LogInfo("THE UNRELENTING: ORIGINS: menu do NML > Mods > The Unrelenting > Configuracao.");
             LogInfo("THE UNRELENTING: ORIGINS: aleatoria DESLIGADA por padrao; Haunted manual sempre disponivel.");
             LogInfo("THE UNRELENTING: CHANCES DE VELOCIDADE LENTO=" + SlowChancePercent +
@@ -223,6 +250,206 @@ namespace Arvak.TheUnrelenting
                 }
             }
             return options;
+        }
+
+        private WitnessOptions ReadWitnessOptions()
+        {
+            WitnessOptions options = new WitnessOptions
+            {
+                Tracking = true,
+                Transfer = false,
+                MaxDistance = 8f,
+                Verbose = false
+            };
+            try
+            {
+                ModConfig config = GetConfig();
+                if (config == null) return options;
+                var group = config[WitnessConfigGroup];
+                options.Tracking = (bool)group[CfgWitnessTracking].GetValue();
+                options.Transfer = (bool)group[CfgWitnessTransfer].GetValue();
+                options.MaxDistance = Mathf.Clamp(Convert.ToSingle(group[CfgWitnessMaxDistance].GetValue()), 2f, 15f);
+                options.Verbose = (bool)group[CfgWitnessVerbose].GetValue();
+                _witnessConfigWarned = false;
+            }
+            catch (Exception e)
+            {
+                // Falla segura: se o painel estiver corrompido, nao contagiar.
+                options.Transfer = false;
+                if (!_witnessConfigWarned)
+                {
+                    LogWarning("THE UNRELENTING: WITNESS CONFIG INDISPONIVEL! TRANSMISSAO DESATIVADA. " +
+                        e.GetType().Name + ": " + e.Message);
+                    _witnessConfigWarned = true;
+                }
+            }
+            return options;
+        }
+
+        // APIs de dados do jogo mudam entre builds. Evitamos assumir a
+        // existencia publica de Actor.data ou ActorData.kills na compilacao.
+        private static object ReadMember(object source, string name)
+        {
+            if (source == null) return null;
+            Type type = source.GetType();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            FieldInfo field = type.GetField(name, flags);
+            if (field != null) return field.GetValue(source);
+            PropertyInfo prop = type.GetProperty(name, flags);
+            if (prop != null && prop.GetIndexParameters().Length == 0)
+                return prop.GetValue(source, null);
+            return null;
+        }
+
+        private static bool TryGetKillCount(Actor actor, out int kills)
+        {
+            kills = 0;
+            if (actor == null) return false;
+            try
+            {
+                object data = ReadMember(actor, "data");
+                if (data == null)
+                {
+                    MethodInfo getData = actor.GetType().GetMethod("getData",
+                        BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                        null, Type.EmptyTypes, null);
+                    if (getData != null) data = getData.Invoke(actor, null);
+                }
+                object value = ReadMember(data, "kills");
+                if (value == null) return false;
+                kills = Convert.ToInt32(value);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static bool TryGetPosition(Actor actor, out Vector2 position)
+        {
+            position = Vector2.zero;
+            if (actor == null || actor.current_tile == null) return false;
+            try
+            {
+                object tile = actor.current_tile;
+                object x = ReadMember(tile, "x");
+                object y = ReadMember(tile, "y");
+                if (x == null || y == null) return false;
+                position = new Vector2(Convert.ToSingle(x), Convert.ToSingle(y));
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Consome APENAS o conjunto de mortes Haunted que vimos em um scan anterior.
+        // Mortes feitas pela propria entidade nao entram aqui: a execucao limpa
+        // _knownHaunted e a fila no mesmo instante, antes do scan seguinte.
+        private void ObserveWitnessDeaths(List<Actor> alive, HashSet<Actor> current, WitnessOptions options)
+        {
+            if (!options.Tracking) return;
+            foreach (Actor old in _knownHaunted)
+            {
+                if (old == null || current.Contains(old) || old.isAlive()) continue;
+                _witnessDeaths++;
+                int victimId = old.GetHashCode();
+                Vector2 position;
+                if (!_lastHauntedPositions.TryGetValue(old, out position))
+                {
+                    LogInfo("THE UNRELENTING: WITNESS MORTE HAUNTED! VITIMA_TEMP_ID=" + victimId +
+                        " SEM_POSICAO_ANTERIOR; AUTOR_NAO_IDENTIFICADO.");
+                    continue;
+                }
+
+                Actor candidate = null;
+                int count = 0;
+                int changedCounters = 0;
+                foreach (Actor actor in alive)
+                {
+                    if (object.ReferenceEquals(actor, old) || object.ReferenceEquals(actor, _host) ||
+                        current.Contains(actor)) continue;
+                    int prior, now;
+                    if (!_previousKills.TryGetValue(actor, out prior) ||
+                        !TryGetKillCount(actor, out now)) continue;
+                    int delta = now - prior;
+                    if (delta <= 0) continue;
+                    changedCounters++;
+                    // Contar mais de um abate por scan nao permite ligar o
+                    // assassino a uma vitima especifica sem eventos de dano.
+                    if (delta != 1) continue;
+                    Vector2 pos;
+                    if (!TryGetPosition(actor, out pos)) continue;
+                    if (Vector2.Distance(pos, position) > options.MaxDistance) continue;
+                    count++;
+                    candidate = actor;
+                }
+
+                if (count != 1)
+                {
+                    LogInfo("THE UNRELENTING: WITNESS MORTE HAUNTED SEM AUTOR SEGURO! " +
+                        "VITIMA_TEMP_ID=" + victimId + " CANDIDATOS_PROXIMOS=" + count +
+                        " CONTADORES_ALTERADOS=" + changedCounters + " MOTIVO=" +
+                        (count > 1 ? "AMBIGUO" : "SEM_CANDIDATO") +
+                        " (NAO TRANSMITIU)");
+                    continue;
+                }
+
+                _witnessConfirmedCandidates++;
+                LogInfo("THE UNRELENTING: WITNESS ASSASSINO PROVAVEL! " +
+                    "VITIMA_TEMP_ID=" + victimId + " CANDIDATO_TEMP_ID=" + candidate.GetHashCode() +
+                    " ESPECIE=" + GetAssetId(candidate) + " PROVA=KILLS_DELTA_1_E_PROXIMIDADE " +
+                    "TRANSFERIR=" + options.Transfer);
+                if (!options.Transfer) continue;
+                // Nao aceitar hospedeiro, vitima marcada ou candidato falecido.
+                if (!Usable(candidate) || current.Contains(candidate) ||
+                    object.ReferenceEquals(candidate, _host)) continue;
+                if (MutateTrait(candidate, "addTrait", TraitId) && candidate.hasTrait(TraitId))
+                {
+                    current.Add(candidate);
+                    _witnessTransfers++;
+                    LogInfo("THE UNRELENTING: WITNESS TRANSMISSAO AO ASSASSINO PROVAVEL! " +
+                        "VITIMA_TEMP_ID=" + victimId + " NOVO_HAUNTED_TEMP_ID=" +
+                        candidate.GetHashCode() + " TOTAL_TRANSMISSOES=" + _witnessTransfers);
+                }
+                else
+                {
+                    LogWarning("THE UNRELENTING: WITNESS FALHA AO TRANSMITIR! " +
+                        "CANDIDATO_TEMP_ID=" + candidate.GetHashCode());
+                }
+            }
+        }
+
+        // Atualiza snapshots apos a analise. Nunca associa abates de scans
+        // passados a mortes futuras; reinicia inteiramente ao mudar de mundo.
+        private void SnapshotWitness(List<Actor> alive, HashSet<Actor> current, WitnessOptions options)
+        {
+            if (!options.Tracking)
+            {
+                _previousKills.Clear();
+                _lastHauntedPositions.Clear();
+                return;
+            }
+            Dictionary<Actor, int> latest = new Dictionary<Actor, int>();
+            foreach (Actor actor in alive)
+            {
+                int kills;
+                if (TryGetKillCount(actor, out kills)) latest[actor] = kills;
+            }
+            if (latest.Count == 0 && alive.Count > 0 && !_witnessCountersWarned)
+            {
+                LogWarning("THE UNRELENTING: WITNESS CONTADOR DE ABATES INACESSIVEL! " +
+                    "SEM ATRIBUICAO DE ASSASSINOS NESTA BUILD.");
+                _witnessCountersWarned = true;
+            }
+            _previousKills.Clear();
+            foreach (KeyValuePair<Actor, int> pair in latest) _previousKills[pair.Key] = pair.Value;
+            _lastHauntedPositions.Clear();
+            foreach (Actor actor in current)
+            {
+                Vector2 pos;
+                if (TryGetPosition(actor, out pos)) _lastHauntedPositions[actor] = pos;
+            }
+            if (options.Verbose && current.Count > 0)
+                LogInfo("THE UNRELENTING: WITNESS SNAPSHOT! HAUNTED=" + current.Count +
+                    " CONTADORES_DISPONIVEIS=" + latest.Count + " MORTES=" + _witnessDeaths +
+                    " CANDIDATOS=" + _witnessConfirmedCandidates + " TRANSMISSOES=" + _witnessTransfers);
         }
 
         private Actor PickOriginTarget(List<Actor> alive, HashSet<Actor> currentHaunted)
@@ -658,6 +885,13 @@ namespace Arvak.TheUnrelenting
             _nextNoEligibleWarningAt = 0f;
             _originLimitWarned = false;
             _warnedOriginSettings = false;
+            _previousKills.Clear();
+            _lastHauntedPositions.Clear();
+            _witnessConfigWarned = false;
+            _witnessCountersWarned = false;
+            _witnessDeaths = 0;
+            _witnessConfirmedCandidates = 0;
+            _witnessTransfers = 0;
         }
 
         private void Update()
@@ -688,9 +922,15 @@ namespace Arvak.TheUnrelenting
                     if (actor.hasTrait(TraitId)) current.Add(actor);
                 }
 
+                // The Witness usa snapshots da iteracao ANTERIOR para identificar
+                // uma morte natural/combate antes de atualizar a fila.
+                WitnessOptions witness = ReadWitnessOptions();
+                ObserveWitnessDeaths(alive, current, witness);
+
                 // Origins aplica Haunted em UMA unidade por evento.
                 // Novas origens recorrentes aguardam o fim da cadeia anterior.
                 UpdateOrigins(alive, current);
+                SnapshotWitness(alive, current, witness);
 
                 // A fila respeita a ordem de descoberta; nao abre novos perseguidores.
                 foreach (Actor actor in alive)

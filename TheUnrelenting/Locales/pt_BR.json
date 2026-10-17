@@ -12,5 +12,14 @@
   "AttemptIntervalSeconds Description": "Segundos reais entre tentativas de origem automatica quando o modo de teste rapido estiver desligado.",
   "TestMode Description": "Somente para testes: com origens aleatorias ligadas, tenta gerar Haunted apos 10 segundos reais, se houver uma criatura elegivel. Permite repetir quando habilitado.",
   "RepeatAutomaticOrigins": "Repetir origens apos o fim da maldicao",
-  "RepeatAutomaticOrigins Description": "Quando ativado, agenda uma nova origem depois que todas as vitimas Haunted desaparecerem. Nao cria uma segunda cadeia durante a perseguicao atual."
+  "RepeatAutomaticOrigins Description": "Quando ativado, agenda uma nova origem depois que todas as vitimas Haunted desaparecerem. Nao cria uma segunda cadeia durante a perseguicao atual.",
+  "TheWitness": "The Witness — The Unrelenting",
+  "EnableWitnessTracking": "Rastrear mortes de Haunted",
+  "EnableWitnessTracking Description": "Observa mortes de Haunted e cruza distancia com aumento do contador de abates. Nao transmite a maldicao por si so.",
+  "EnableKillerTransfer": "Transmitir ao assassino provavel (experimental)",
+  "EnableKillerTransfer Description": "DESLIGADO por padrao. Se uma unica criatura proxima ganhar exatamente um abate entre verificacoes, transmite Haunted ao candidato. Nao e prova absoluta de quem matou.",
+  "MaxKillerDistance": "Distancia maxima do assassino (tiles)",
+  "MaxKillerDistance Description": "Limite de distancia entre a posicao da morte e o candidato. Distancias pequenas reduzem falsos positivos, mas podem ignorar armas de longo alcance.",
+  "VerboseWitnessLogs": "Diagnostico detalhado de Witness",
+  "VerboseWitnessLogs Description": "Mostra os contadores internos no log a cada verificacao com vitimas Haunted. Recomendado apenas para testes."
 }
