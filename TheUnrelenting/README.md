@@ -191,3 +191,18 @@ Compatible **by detection**, not by a documented Worldfall integration contract.
 The bridge does **not** modify Worldfall, patch its code, inject input, or bundle its DLL. No new dependencies were introduced. If your copy uses an undocumented member name, log diagnostics will show some discovered class/member names; missing positive proof means **no jumpscare** rather than a false positive.
 
 GitHub commit: `feat: add conservative Worldfall possession detection and diagnostics`
+
+
+## v0.13.2 — Worldfall Bridge v2 (diagnostic fix)
+
+The first Worldfall probe examined only 80 matching types and accidentally accepted every class in the `Worldfall` namespace, including unrelated `Ability` and `Armor` types. This release ranks type **simple names** and actual Actor/bool field/property signatures, prioritizes possession and player controllers, caches candidate types and reports richer, safe diagnostics. No Worldfall binaries are bundled, and no Worldfall fields are changed.
+
+**Run:** enable `Immersion > VerboseImmersionLogs` and `EnablePresenceCue`, possess the Haunted victim with `G`, bring it near a host for 8 seconds, then run:
+
+```bash
+grep -nE 'WORLDFALL PROBE V2|WORLDFALL CLASSES|WORLDFALL CONTROLE|CONTROLE NAO COMPROVADO|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 100
+```
+
+Only positive exact Actor reference + active possession-state evidence allows the effect. A `CONTROLE_COMPROVADO=False` is still possible, since the third-party interface is undocumented. If it happens, share the `PROBE V2` and `CLASSES` logs. Do not enable jumpscare until the detection matches correctly. Other systems from v0.13.1 are unchanged.
+
+**GitHub:** `fix: prioritize Worldfall control classes and improve possession diagnostics`

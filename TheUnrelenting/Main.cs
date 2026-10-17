@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.13.1 - Worldfall Bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
+    // v0.13.2 - Worldfall Bridge diagnostics (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -774,7 +774,7 @@ namespace Arvak.TheUnrelenting
             return false;
         }
 
-        // Worldfall Bridge (v0.13.1). Worldfall distributes a compiled mod and
+        // Worldfall Bridge (v0.13.2). Worldfall distributes a compiled mod and
         // currently does not document its possession-state API. This adapter uses
         // safe runtime reflection: an exact Actor match is NOT enough by itself.
         // A separate first-person/possession-active flag must also be true.
@@ -786,7 +786,7 @@ namespace Arvak.TheUnrelenting
             "isPossessing", "IsPossessing", "is_possessing", "isInFirstPerson", "IsInFirstPerson",
             "inFirstPerson", "InFirstPerson", "firstPersonActive", "FirstPersonActive",
             "isFirstPersonActive", "IsFirstPersonActive", "isPlayerControlling", "IsPlayerControlling",
-            "isInGame", "IsInGame", "isPossessed", "IsPossessed", "possessing", "Possessing"
+            "isPossessed", "IsPossessed", "possessing", "Possessing"
         };
         private static readonly string[] WorldfallActorKeys =
         {
@@ -813,6 +813,23 @@ namespace Arvak.TheUnrelenting
         {
             foreach (string name in WorldfallActorKeys)
                 if (ExactActor(Member(owner, type, name, statics), victim)) return true;
+            // Accept additional explicitly control-related Actor-typed members, but
+            // never selected/hovered/target actors. An active flag is still required.
+            try
+            {
+                BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
+                    (statics ? BindingFlags.Static : BindingFlags.Instance);
+                foreach (FieldInfo field in type.GetFields(flags))
+                    if (field != null && typeof(Actor).IsAssignableFrom(field.FieldType) &&
+                        WorldfallControlActorName(field.Name) && ExactActor(field.GetValue(owner), victim)) return true;
+                foreach (PropertyInfo p in type.GetProperties(flags))
+                {
+                    if (p == null || !typeof(Actor).IsAssignableFrom(p.PropertyType) ||
+                        !WorldfallControlActorName(p.Name) || p.GetIndexParameters().Length != 0) continue;
+                    if (ExactActor(p.GetValue(owner, null), victim)) return true;
+                }
+            }
+            catch { }
             // Permit getter methods only when the name explicitly states possession
             // or player control. A selected actor is never treated as possessed.
             try
@@ -834,19 +851,82 @@ namespace Arvak.TheUnrelenting
             return false;
         }
 
-        private bool WorldfallPlayerIs(Actor victim, out bool worldfallLoaded)
+        // v0.13.2: the previous probe checked type.FullName and therefore every
+        // type under namespace Worldfall looked like a candidate. The first 80
+        // alphabetically happened to be Ability/Armor/etc. This cache ranks the
+        // *simple type name* and the declared member signatures instead.
+        private readonly List<Type> _worldfallCandidateTypes = new List<Type>();
+        private bool _worldfallTypeCacheReady;
+        private bool _worldfallAssemblyFound;
+        private int _worldfallTotalTypes;
+        private int _worldfallDiscoveredCandidates;
+
+        private static bool WorldfallControlActorName(string raw)
         {
-            worldfallLoaded = false;
-            bool matched = false;
-            int classesVisited = 0;
-            string diagnostics = "";
+            if (string.IsNullOrEmpty(raw)) return false;
+            string n = raw.ToLowerInvariant();
+            if (n.Contains("selected") || n.Contains("hover") || n.Contains("target")) return false;
+            return n.Contains("possess") || n.Contains("controlled") ||
+                n.Contains("playeractor") || n.Contains("playerunit") ||
+                n.Contains("currentactor") || n.Contains("currentunit") ||
+                n.Contains("avatar") || n.Contains("playerbody");
+        }
+
+        private static int WorldfallTypePriority(Type type)
+        {
+            if (type == null) return 0;
+            string name = (type.Name ?? "").ToLowerInvariant();
+            int rank = 0;
+            if (name.Contains("possess")) rank = 120;
+            else if (name.Contains("firstperson") || name.Contains("first_person")) rank = 115;
+            else if (name.Contains("playercontroller") || name.Contains("playercontrol")) rank = 110;
+            else if (name.Contains("player")) rank = 95;
+            else if (name.Contains("controller") || name.Contains("control")) rank = 85;
+            else if (name.Contains("camera") || name.Contains("avatar") || name.Contains("pawn")) rank = 75;
+            else if (name.Contains("rig") || name.Contains("worldfall") || name.Contains("firstview")) rank = 65;
+            else if (name.Contains("actor") || name.Contains("unit") || name.Contains("view")) rank = 30;
+
+            // Discover poorly named classes by the types and names of their fields.
+            // This reads metadata only. It does not call Worldfall code or mutate state.
+            try
+            {
+                BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
+                    BindingFlags.Instance | BindingFlags.Static;
+                foreach (FieldInfo f in type.GetFields(flags))
+                {
+                    if (f != null && typeof(Actor).IsAssignableFrom(f.FieldType) &&
+                        WorldfallControlActorName(f.Name)) rank = Math.Max(rank, 105);
+                    else if (f != null && f.FieldType == typeof(bool))
+                    {
+                        string n = f.Name.ToLowerInvariant();
+                        if (n.Contains("possess") || n.Contains("firstperson") ||
+                            n.Contains("playercontrol")) rank = Math.Max(rank, 70);
+                    }
+                }
+                foreach (PropertyInfo p in type.GetProperties(flags))
+                {
+                    if (p != null && typeof(Actor).IsAssignableFrom(p.PropertyType) &&
+                        WorldfallControlActorName(p.Name)) rank = Math.Max(rank, 105);
+                }
+            }
+            catch { }
+            return rank;
+        }
+
+        private void BuildWorldfallCandidateCache()
+        {
+            if (_worldfallTypeCacheReady) return;
+            var ranked = new List<KeyValuePair<int, Type>>();
+            _worldfallTotalTypes = 0;
+            _worldfallDiscoveredCandidates = 0;
+            _worldfallAssemblyFound = false;
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
-                string assemblyName;
-                try { assemblyName = assembly.GetName().Name; } catch { continue; }
-                string lowAssembly = (assemblyName ?? "").ToLowerInvariant();
-                if (!lowAssembly.Contains("worldfall") && !lowAssembly.Contains("firstperson")) continue;
-                worldfallLoaded = true;
+                string name;
+                try { name = assembly.GetName().Name; } catch { continue; }
+                string a = (name ?? "").ToLowerInvariant();
+                if (!a.Contains("worldfall") && !a.Contains("firstperson")) continue;
+                _worldfallAssemblyFound = true;
                 Type[] types;
                 try { types = assembly.GetTypes(); }
                 catch (ReflectionTypeLoadException e) { types = e.Types; }
@@ -854,60 +934,113 @@ namespace Arvak.TheUnrelenting
                 if (types == null) continue;
                 foreach (Type type in types)
                 {
-                    if (type == null || classesVisited >= 80) break;
-                    string typeName = (type.FullName ?? type.Name).ToLowerInvariant();
-                    if (!(typeName.Contains("possess") || typeName.Contains("firstperson") ||
-                          typeName.Contains("controller") || typeName.Contains("worldfall") ||
-                          typeName.Contains("player"))) continue;
-                    classesVisited++;
-                    bool active = WorldfallActive(null, type, true);
-                    if (active && WorldfallActorMatch(null, type, true, victim)) matched = true;
-                    foreach (string singletonName in WorldfallSingletonKeys)
-                    {
-                        object singleton = Member(null, type, singletonName, true);
-                        if (singleton == null || singleton is Actor) continue;
-                        bool singletonActive = active || WorldfallActive(singleton, singleton.GetType(), false);
-                        if (singletonActive && WorldfallActorMatch(singleton, singleton.GetType(), false, victim))
-                            matched = true;
-                    }
-                    // Only log type names and candidate public/private member names,
-                    // never dump game objects or actor identity from Worldfall.
-                    if (diagnostics.Length < 480 && (typeName.Contains("possess") ||
-                        typeName.Contains("firstperson") || typeName.Contains("controller")))
-                    {
-                        string names = "";
-                        try
-                        {
-                            BindingFlags f = BindingFlags.Static | BindingFlags.Instance |
-                                BindingFlags.NonPublic | BindingFlags.Public;
-                            foreach (FieldInfo fi in type.GetFields(f))
-                            {
-                                string low = fi.Name.ToLowerInvariant();
-                                if (!(low.Contains("actor") || low.Contains("possess") ||
-                                      low.Contains("control") || low.Contains("firstperson"))) continue;
-                                if (names.Length > 85) break;
-                                if (names.Length != 0) names += ",";
-                                names += fi.Name;
-                            }
-                        }
-                        catch { }
-                        if (diagnostics.Length != 0) diagnostics += ";";
-                        diagnostics += type.Name + "[" + names + "]";
-                    }
+                    if (type == null) continue;
+                    _worldfallTotalTypes++;
+                    int rank = WorldfallTypePriority(type);
+                    if (rank <= 0) continue;
+                    _worldfallDiscoveredCandidates++;
+                    ranked.Add(new KeyValuePair<int, Type>(rank, type));
                 }
+            }
+            ranked.Sort(delegate(KeyValuePair<int, Type> a, KeyValuePair<int, Type> b)
+            {
+                int d = b.Key.CompareTo(a.Key);
+                return d != 0 ? d : string.Compare(a.Value.FullName, b.Value.FullName, StringComparison.Ordinal);
+            });
+            _worldfallCandidateTypes.Clear();
+            // Bound the runtime probe; all relevant classes were ranked FIRST.
+            for (int i = 0; i < ranked.Count && i < 160; i++)
+                _worldfallCandidateTypes.Add(ranked[i].Value);
+            // Worldfall may load after this mod. Retry if it is not present yet.
+            _worldfallTypeCacheReady = _worldfallAssemblyFound;
+        }
+
+        private static string WorldfallMemberSummary(Type type)
+        {
+            var names = new List<string>();
+            try
+            {
+                BindingFlags f = BindingFlags.Instance | BindingFlags.Static |
+                    BindingFlags.NonPublic | BindingFlags.Public;
+                foreach (FieldInfo field in type.GetFields(f))
+                {
+                    if (field == null) continue;
+                    string n = field.Name.ToLowerInvariant();
+                    bool interesting = n.Contains("possess") || n.Contains("control") ||
+                        n.Contains("player") || n.Contains("firstperson") || n.Contains("avatar");
+                    if (interesting && (field.FieldType == typeof(bool) ||
+                        typeof(Actor).IsAssignableFrom(field.FieldType)))
+                        names.Add(field.Name + ":" + field.FieldType.Name);
+                    if (names.Count >= 10) break;
+                }
+                if (names.Count < 10) foreach (PropertyInfo p in type.GetProperties(f))
+                {
+                    if (p == null) continue;
+                    string n = p.Name.ToLowerInvariant();
+                    bool interesting = n.Contains("possess") || n.Contains("control") ||
+                        n.Contains("player") || n.Contains("firstperson") || n.Contains("avatar");
+                    if (interesting && (p.PropertyType == typeof(bool) ||
+                        typeof(Actor).IsAssignableFrom(p.PropertyType)))
+                        names.Add(p.Name + ":" + p.PropertyType.Name);
+                    if (names.Count >= 10) break;
+                }
+            }
+            catch { }
+            return type.Name + "[" + string.Join(",", names.ToArray()) + "]";
+        }
+
+        private bool WorldfallPlayerIs(Actor victim, out bool worldfallLoaded)
+        {
+            BuildWorldfallCandidateCache();
+            worldfallLoaded = _worldfallAssemblyFound;
+            bool matched = false;
+            int activeTypes = 0;
+            int actorMatchedTypes = 0;
+            foreach (Type type in _worldfallCandidateTypes)
+            {
+                bool active = WorldfallActive(null, type, true);
+                bool actorMatched = WorldfallActorMatch(null, type, true, victim);
+                if (active) activeTypes++;
+                if (actorMatched) actorMatchedTypes++;
+                if (active && actorMatched) matched = true;
+                foreach (string singletonName in WorldfallSingletonKeys)
+                {
+                    object singleton = Member(null, type, singletonName, true);
+                    if (singleton == null || singleton is Actor) continue;
+                    bool singletonActive = active || WorldfallActive(singleton, singleton.GetType(), false);
+                    bool singletonActorMatched = WorldfallActorMatch(singleton, singleton.GetType(), false, victim);
+                    if (singletonActive) activeTypes++;
+                    if (singletonActorMatched) actorMatchedTypes++;
+                    if (singletonActive && singletonActorMatched) matched = true;
+                }
+                if (matched) break;
             }
             if (_immersion.Verbose && Time.unscaledTime >= _nextWorldfallProbeLog)
             {
                 _nextWorldfallProbeLog = Time.unscaledTime + 30f;
-                LogInfo("THE UNRELENTING: IMMERSION WORLDFALL PROBE! " +
-                    "DLL_ENCONTRADA=" + worldfallLoaded + " CLASSES_INSPECIONADAS=" + classesVisited +
-                    " CONTROLE_COMPROVADO=" + matched + " CAMPOS=" + diagnostics);
+                LogInfo("THE UNRELENTING: IMMERSION WORLDFALL PROBE V2! " +
+                    "DLL_ENCONTRADA=" + worldfallLoaded +
+                    " TIPOS_NA_DLL=" + _worldfallTotalTypes +
+                    " CLASSES_CANDIDATAS=" + _worldfallDiscoveredCandidates +
+                    " INSPECIONADAS=" + _worldfallCandidateTypes.Count +
+                    " ATOR_ENCONTRADO=" + (actorMatchedTypes > 0) +
+                    " MODO_ATIVO_ENCONTRADO=" + (activeTypes > 0) +
+                    " CONTROLE_COMPROVADO=" + matched);
+                // Names and declared types only; never dump game objects or actor values.
+                for (int i = 0; i < _worldfallCandidateTypes.Count && i < 24; i += 6)
+                {
+                    var entries = new List<string>();
+                    for (int j = i; j < _worldfallCandidateTypes.Count && j < i + 6; j++)
+                        entries.Add(WorldfallMemberSummary(_worldfallCandidateTypes[j]));
+                    LogInfo("THE UNRELENTING: IMMERSION WORLDFALL CLASSES " + (i + 1) + "-" +
+                        (i + entries.Count) + "! " + string.Join(";", entries.ToArray()));
+                }
             }
             if (matched && !_worldfallConfirmationLogged)
             {
                 _worldfallConfirmationLogged = true;
                 LogInfo("THE UNRELENTING: IMMERSION WORLDFALL CONTROLE COMPROVADO! ATOR_TEMP_ID=" +
-                    victim.GetHashCode() + " (REFERENCIA_EXATA_E_MODO_ATIVO). ");
+                    victim.GetHashCode() + " (REFERENCIA_EXATA_E_MODO_ATIVO).");
             }
             if (!matched) _worldfallConfirmationLogged = false;
             return matched;
@@ -1143,7 +1276,7 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.13.1 WORLDFALL BRIDGE + IMMERSION + BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.13.2 WORLDFALL BRIDGE + IMMERSION + BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
             LogInfo("THE UNRELENTING: IMMERSION: Worldfall Bridge experimental; requer ator exato E estado de possessao ativo; uso diagnostico no VerboseImmersionLogs.");
             LoadImmersionArt();

@@ -31,3 +31,10 @@ v0.13.1 WORLDFALL BRIDGE (EXPERIMENTAL):
 - O susto nunca deve acontecer por mera selecao; requer controle de personagem comprovado.
 - Caso a deteccao falhe, nao ha susto nem som (fail-closed). Envie logs e versao do Worldfall.
 Commit: feat: add conservative Worldfall possession detection and diagnostics
+
+
+v0.13.2 WORLDFALL BRIDGE V2:
+- Corrigido filtro que incluia todas as classes do namespace Worldfall no limite de 80.
+- Novo diagnostico PROBE V2 e CLASSES; logs so em modo verbose, atualizados a cada ~30s reais.
+- Nao ativa sustos nem sons sem confirmar ator exato e modo ativo.
+- Commit: fix: prioritize Worldfall control classes and improve possession diagnostics
