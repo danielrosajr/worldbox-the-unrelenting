@@ -1,8 +1,8 @@
-# The Unrelenting v0.10.0 — Origins
+# The Unrelenting v0.10.1 — Origins
 
 Experimental horror mod for **WorldBox 0.51.2 (build 719)** using **NeoModLoader**, tested in development on native Ubuntu/Steam by the mod creator.
 
-## New in v0.10.0
+## New in v0.10.1
 
 **Origins** supports two ways to begin the curse:
 
@@ -58,4 +58,11 @@ Replace `Main.cs`, `mod.json`, `README.md`, `LEIA-ME.txt`, `Locales/*.json` and 
 
 Commit: `feat: add opt-in rare Haunted origins and NML settings panel`
 
-Version: `v0.10.0` (release after testing).
+Version: `v0.10.1` (release after testing).
+
+
+## v0.10.1 — Localization fix
+
+- Added missing option descriptions in the NML Origins panel (English, pt, pt_BR).
+- No gameplay changes: automatic/manual Haunted, body hopping, speed randomness and sudden bursts are unchanged.
+- Commit: `fix: add missing Origins configuration descriptions`

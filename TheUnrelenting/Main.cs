@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.10.0 - Origins: geracao rara, mundial e opcional da trait Haunted.
+    // v0.10.1 - Origins localization fix: geracao rara, mundial e opcional da trait Haunted.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -127,7 +127,7 @@ namespace Arvak.TheUnrelenting
                 needs_to_be_explored = false
             });
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.10.0 ORIGINS + CADEIA + VELOCIDADE + ARRANCADAS ATIVAS.");
+            LogInfo("THE UNRELENTING: V0.10.1 ORIGINS + CADEIA + VELOCIDADE + ARRANCADAS ATIVAS.");
             LogInfo("THE UNRELENTING: ORIGINS: menu do NML > Mods > The Unrelenting > Configuracao.");
             LogInfo("THE UNRELENTING: ORIGINS: aleatoria DESLIGADA por padrao; Haunted manual sempre disponivel.");
             LogInfo("THE UNRELENTING: CHANCES DE VELOCIDADE LENTO=" + SlowChancePercent +

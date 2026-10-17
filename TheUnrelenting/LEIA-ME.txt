@@ -1,4 +1,4 @@
-THE UNRELENTING v0.10.0 - ORIGINS (WorldBox 0.51.2 / NML)
+THE UNRELENTING v0.10.1 - ORIGINS (WorldBox 0.51.2 / NML)
 
 1. Feche o jogo e substitua a pasta antiga TheUnrelenting pela nova.
 2. Certifique-se de copiar tambem o NOVO default_config.json.
@@ -15,3 +15,6 @@ persistente entre salvamentos. Use mundo descartavel.
 GitHub: adicionar default_config.json; substituir Main.cs, mod.json,
 Locales e documentacao pelos da nova versao.
 Commit: feat: add opt-in rare Haunted origins and NML settings panel
+
+Correcoes: descricoes das quatro opcoes da tela Origins.
+Commit: fix: add missing Origins configuration descriptions

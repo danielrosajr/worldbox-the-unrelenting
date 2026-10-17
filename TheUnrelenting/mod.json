@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.10.0",
-  "description": "Origins: opt-in rare world events, native NML settings and test mode; manual Haunted and body-hopping pursuit retained",
+  "version": "0.10.1",
+  "description": "Fix missing Origins panel descriptions; keeps v0.10.0 gameplay unchanged",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []
