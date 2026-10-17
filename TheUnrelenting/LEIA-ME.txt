@@ -22,3 +22,12 @@ NOVO NA V0.13.0
 - Logs redundantes de Witness/Trauma reduzidos.
 - Teste inicial em mundo descartavel. Para depurar, ative VerboseImmersionLogs e envie registros IMMERSION do Player.log.
 Commit: feat: add custom Haunted icons and optional immersion effects
+
+
+v0.13.1 WORLDFALL BRIDGE (EXPERIMENTAL):
+- O nome do mod de primeira pessoa foi confirmado: Worldfall.
+- A interface interna do Worldfall ainda nao foi documentada; usa verificacao conservadora por reflexao.
+- Ative Immersion > VerboseImmersionLogs para ver IMMERSION WORLDFALL PROBE.
+- O susto nunca deve acontecer por mera selecao; requer controle de personagem comprovado.
+- Caso a deteccao falhe, nao ha susto nem som (fail-closed). Envie logs e versao do Worldfall.
+Commit: feat: add conservative Worldfall possession detection and diagnostics

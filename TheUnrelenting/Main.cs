@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.13.0 - Polish and Immersion: heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
+    // v0.13.1 - Worldfall Bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -729,6 +729,11 @@ namespace Arvak.TheUnrelenting
                 object val = Member(victim, victim.GetType(), key, false);
                 if (val is bool && (bool)val) return true;
             }
+            // Prefer the dedicated Worldfall bridge over generic heuristics.
+            // Worldfall present but unknown state => fail closed, never treat mere selection as control.
+            bool worldfallLoaded;
+            bool worldfallMatched = WorldfallPlayerIs(victim, out worldfallLoaded);
+            if (worldfallLoaded) return worldfallMatched;
             // Explicit control member on the world manager (not camera selection).
             if (World.world != null)
             {
@@ -767,6 +772,145 @@ namespace Arvak.TheUnrelenting
                 }
             }
             return false;
+        }
+
+        // Worldfall Bridge (v0.13.1). Worldfall distributes a compiled mod and
+        // currently does not document its possession-state API. This adapter uses
+        // safe runtime reflection: an exact Actor match is NOT enough by itself.
+        // A separate first-person/possession-active flag must also be true.
+        // If any condition is unknown, return false (no surprise overlay).
+        private float _nextWorldfallProbeLog;
+        private bool _worldfallConfirmationLogged;
+        private static readonly string[] WorldfallActiveKeys =
+        {
+            "isPossessing", "IsPossessing", "is_possessing", "isInFirstPerson", "IsInFirstPerson",
+            "inFirstPerson", "InFirstPerson", "firstPersonActive", "FirstPersonActive",
+            "isFirstPersonActive", "IsFirstPersonActive", "isPlayerControlling", "IsPlayerControlling",
+            "isInGame", "IsInGame", "isPossessed", "IsPossessed", "possessing", "Possessing"
+        };
+        private static readonly string[] WorldfallActorKeys =
+        {
+            "possessedActor", "PossessedActor", "possessed_actor", "_possessedActor",
+            "controlledActor", "ControlledActor", "controlled_actor", "_controlledActor",
+            "playerActor", "PlayerActor", "player_actor", "_playerActor",
+            "possessedUnit", "PossessedUnit", "controlledUnit", "ControlledUnit",
+            "currentPossession", "CurrentPossession", "currentPossessedActor", "CurrentPossessedActor"
+        };
+        private static readonly string[] WorldfallSingletonKeys =
+        { "Instance", "instance", "Singleton", "singleton", "Current", "current" };
+
+        private static bool WorldfallActive(object owner, Type type, bool statics)
+        {
+            foreach (string name in WorldfallActiveKeys)
+            {
+                object value = Member(owner, type, name, statics);
+                if (value is bool && (bool)value) return true;
+            }
+            return false;
+        }
+
+        private static bool WorldfallActorMatch(object owner, Type type, bool statics, Actor victim)
+        {
+            foreach (string name in WorldfallActorKeys)
+                if (ExactActor(Member(owner, type, name, statics), victim)) return true;
+            // Permit getter methods only when the name explicitly states possession
+            // or player control. A selected actor is never treated as possessed.
+            try
+            {
+                BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
+                    (statics ? BindingFlags.Static : BindingFlags.Instance);
+                foreach (MethodInfo method in type.GetMethods(flags))
+                {
+                    if (method == null || !typeof(Actor).IsAssignableFrom(method.ReturnType) ||
+                        method.GetParameters().Length != 0 || method.IsGenericMethod) continue;
+                    string n = method.Name.ToLowerInvariant();
+                    if (!n.StartsWith("get") || !(n.Contains("possess") || n.Contains("controlledactor") ||
+                          n.Contains("playeractor") || n.Contains("controlledunit"))) continue;
+                    try { if (ExactActor(method.Invoke(owner, null), victim)) return true; }
+                    catch { }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private bool WorldfallPlayerIs(Actor victim, out bool worldfallLoaded)
+        {
+            worldfallLoaded = false;
+            bool matched = false;
+            int classesVisited = 0;
+            string diagnostics = "";
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                string assemblyName;
+                try { assemblyName = assembly.GetName().Name; } catch { continue; }
+                string lowAssembly = (assemblyName ?? "").ToLowerInvariant();
+                if (!lowAssembly.Contains("worldfall") && !lowAssembly.Contains("firstperson")) continue;
+                worldfallLoaded = true;
+                Type[] types;
+                try { types = assembly.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+                catch { continue; }
+                if (types == null) continue;
+                foreach (Type type in types)
+                {
+                    if (type == null || classesVisited >= 80) break;
+                    string typeName = (type.FullName ?? type.Name).ToLowerInvariant();
+                    if (!(typeName.Contains("possess") || typeName.Contains("firstperson") ||
+                          typeName.Contains("controller") || typeName.Contains("worldfall") ||
+                          typeName.Contains("player"))) continue;
+                    classesVisited++;
+                    bool active = WorldfallActive(null, type, true);
+                    if (active && WorldfallActorMatch(null, type, true, victim)) matched = true;
+                    foreach (string singletonName in WorldfallSingletonKeys)
+                    {
+                        object singleton = Member(null, type, singletonName, true);
+                        if (singleton == null || singleton is Actor) continue;
+                        bool singletonActive = active || WorldfallActive(singleton, singleton.GetType(), false);
+                        if (singletonActive && WorldfallActorMatch(singleton, singleton.GetType(), false, victim))
+                            matched = true;
+                    }
+                    // Only log type names and candidate public/private member names,
+                    // never dump game objects or actor identity from Worldfall.
+                    if (diagnostics.Length < 480 && (typeName.Contains("possess") ||
+                        typeName.Contains("firstperson") || typeName.Contains("controller")))
+                    {
+                        string names = "";
+                        try
+                        {
+                            BindingFlags f = BindingFlags.Static | BindingFlags.Instance |
+                                BindingFlags.NonPublic | BindingFlags.Public;
+                            foreach (FieldInfo fi in type.GetFields(f))
+                            {
+                                string low = fi.Name.ToLowerInvariant();
+                                if (!(low.Contains("actor") || low.Contains("possess") ||
+                                      low.Contains("control") || low.Contains("firstperson"))) continue;
+                                if (names.Length > 85) break;
+                                if (names.Length != 0) names += ",";
+                                names += fi.Name;
+                            }
+                        }
+                        catch { }
+                        if (diagnostics.Length != 0) diagnostics += ";";
+                        diagnostics += type.Name + "[" + names + "]";
+                    }
+                }
+            }
+            if (_immersion.Verbose && Time.unscaledTime >= _nextWorldfallProbeLog)
+            {
+                _nextWorldfallProbeLog = Time.unscaledTime + 30f;
+                LogInfo("THE UNRELENTING: IMMERSION WORLDFALL PROBE! " +
+                    "DLL_ENCONTRADA=" + worldfallLoaded + " CLASSES_INSPECIONADAS=" + classesVisited +
+                    " CONTROLE_COMPROVADO=" + matched + " CAMPOS=" + diagnostics);
+            }
+            if (matched && !_worldfallConfirmationLogged)
+            {
+                _worldfallConfirmationLogged = true;
+                LogInfo("THE UNRELENTING: IMMERSION WORLDFALL CONTROLE COMPROVADO! ATOR_TEMP_ID=" +
+                    victim.GetHashCode() + " (REFERENCIA_EXATA_E_MODO_ATIVO). ");
+            }
+            if (!matched) _worldfallConfirmationLogged = false;
+            return matched;
         }
 
         private void ReportUnverifiedControl(Actor target)
@@ -999,9 +1143,9 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.13.0 POLISH + IMMERSION + BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.13.1 WORLDFALL BRIDGE + IMMERSION + BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
-            LogInfo("THE UNRELENTING: IMMERSION: icons customizados; audio e susto opt-in e exigem controle verificado.");
+            LogInfo("THE UNRELENTING: IMMERSION: Worldfall Bridge experimental; requer ator exato E estado de possessao ativo; uso diagnostico no VerboseImmersionLogs.");
             LoadImmersionArt();
             LogInfo("THE UNRELENTING: ANTI-KITE PREPARADO! BONUS_SPEED=" + PunishingRushSpeedBonus.ToString("F0") +
                 " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s; CONFIGURAVEL NO NML.");

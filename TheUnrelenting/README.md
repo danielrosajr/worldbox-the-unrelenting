@@ -177,3 +177,17 @@ grep -nE 'TRAUMA|WITNESS TRANSMISSAO|HAUNTED ENTROU|error CS|Failed to compile' 
 - **Scope:** not yet a universal integration with every third-party third-person control mod. If you do not see a jumpscare when your controlled victim dies, send the control-mod name/version and the `IMMERSION` logs. We will adapt to its real API instead of guessing.
 
 Suggested GitHub commit: `feat: add custom Haunted icons and optional immersion effects`
+
+
+## v0.13.1 — Worldfall Bridge (experimental)
+
+Compatible **by detection**, not by a documented Worldfall integration contract. Worldfall distributes compiled DLLs and does not currently publish a supported player-possession API. We find loaded assemblies named `Worldfall` or `FirstPerson` and accept a Worldfall-controlled victim only if **(a)** an explicitly named possessed/controlled actor reference exactly matches the victim and **(b)** an independent active possession/first-person state is `true`. Selecting or viewing a unit is not enough. Unknown signatures fail closed: there is no image or sound.
+
+1. Install Worldfall and The Unrelenting as usual. For first test, use a disposable world.
+2. In The Unrelenting > `Immersion`, enable `VerboseImmersionLogs`; keep `EnableDeathJumpscare` disabled initially. Select and enter first-person Worldfall possession (`G`) of a Haunted unit.
+3. Read `IMMERSION WORLDFALL PROBE!` after the victim has stayed within 12 tiles of a host for 8 seconds (if `EnablePresenceCue` is on). A `CONTROLE_COMPROVADO=True` and `IMMERSION WORLDFALL CONTROLE COMPROVADO!` line is required before you try a death jumpscare.
+4. Only after confirming control detection: enable the death jumpscare, use a low sound level and a 100% test chance. Do not wear loud headphones. If `DLL_ENCONTRADA=False`, share the Worldfall DLL file name/version and the relevant log lines; a renamed mod assembly may require a mapping.
+
+The bridge does **not** modify Worldfall, patch its code, inject input, or bundle its DLL. No new dependencies were introduced. If your copy uses an undocumented member name, log diagnostics will show some discovered class/member names; missing positive proof means **no jumpscare** rather than a false positive.
+
+GitHub commit: `feat: add conservative Worldfall possession detection and diagnostics`
