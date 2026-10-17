@@ -1,50 +1,19 @@
-THE UNRELENTING v0.13.0 — BLOODLINE
+THE UNRELENTING v0.13.5 — CONTROLLED FURY
 
-Instale a pasta TheUnrelenting completa no diretorio de mods NML.
-A maldicao Haunted: Bloodline exige transmissao ativada no painel.
-Apenas morte CONFIRMADA pela entidade pode iniciar heranca.
-O mod procura um descendente comprovado: filho, neto ou bisneto.
-Se nao reconhecer a genealogia da sua build, nao faz transmissao e registra diagnostico no Player.log.
+Atualize SUBSTITUINDO a pasta TheUnrelenting inteira pelo conteudo deste ZIP.
 
-TESTE EM MUNDO DESCARTAVEL COM PAIS E FILHOS IDENTIFICADOS NA GENEALOGIA.
+Novo em AntiKite:
+- Chance do castigo Anti-Kite: 10% a cada 8 segundos (apos 30 s perto e circulando).
+- Arrancada comum (trait Fast): 5% por tentativa. Pode desligar no painel.
+- As duas chances podem ser ajustadas para 0% durante o teste com Worldfall.
+- Icone personalizado de corrida sobrenatural na trait Punishing Rush.
 
-Comando: grep -nE 'BLOODLINE|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
+Nao e necessario ter outros mods novos alem do NeoModLoader; Worldfall continua opcional.
+Para log: grep -nE 'V0.13.5|ANTI-KITE SORTEIO|ARRANCADA|WORLDFALL|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
 
-Para rollback, restaure v0.11.4. Primeiro remova Haunted: Bloodline do save, se existir.
+VERSAO EXPERIMENTAL. TESTE NUM MUNDO DESCARTAVEL.
+Rollback: v0.13.3.
+Commit GitHub: feat: make anti-kite bursts probabilistic and add rush trait icon
 
-GitHub: feat: add opt-in Bloodline inheritance with verified descendant links
-
-
-NOVO NA V0.13.0
-- Icons proprios das 3 maldicoes e icone do mod.
-- Painel: Immersion. Som sutil, jumpscare de morte com imagem, chance, volume limitado e diagnostico na tela.
-- SONS E JUMPSCARE VEM DESLIGADOS. Requer identificar exatamente o personagem CONTROLADO no mod de terceira pessoa. Se nao identificar, nao toca nem mostra.
-- Logs redundantes de Witness/Trauma reduzidos.
-- Teste inicial em mundo descartavel. Para depurar, ative VerboseImmersionLogs e envie registros IMMERSION do Player.log.
-Commit: feat: add custom Haunted icons and optional immersion effects
-
-
-v0.13.1 WORLDFALL BRIDGE (EXPERIMENTAL):
-- O nome do mod de primeira pessoa foi confirmado: Worldfall.
-- A interface interna do Worldfall ainda nao foi documentada; usa verificacao conservadora por reflexao.
-- Ative Immersion > VerboseImmersionLogs para ver IMMERSION WORLDFALL PROBE.
-- O susto nunca deve acontecer por mera selecao; requer controle de personagem comprovado.
-- Caso a deteccao falhe, nao ha susto nem som (fail-closed). Envie logs e versao do Worldfall.
-Commit: feat: add conservative Worldfall possession detection and diagnostics
-
-
-v0.13.2 WORLDFALL BRIDGE V2:
-- Corrigido filtro que incluia todas as classes do namespace Worldfall no limite de 80.
-- Novo diagnostico PROBE V2 e CLASSES; logs so em modo verbose, atualizados a cada ~30s reais.
-- Nao ativa sustos nem sons sem confirmar ator exato e modo ativo.
-- Commit: fix: prioritize Worldfall control classes and improve possession diagnostics
-
-
-NOVO NA V0.13.3 - WORLDPACE BRIDGE
-O log da v0.13.2 confirmou WorldPace._possessed:Actor.
-O mod agora le esse campo somente por reflexao, sem modificar o Worldfall.
-Teste primeiro com VerboseImmersionLogs ligado, EnablePresenceCue ligado e DeathJumpscare desligado.
-Aperte G para controlar Haunted. Confira WORLDPACE_ATOR_TEMP_ID e CONTROLE_COMPROVADO.
-Solte G, espere o proximo diagnostico e confirme que a referencia deixa de apontar para o alvo.
-So depois teste o jumpscare opcional, sempre em mundo descartavel e volume baixo.
-Commit: fix: detect Worldfall possession through WorldPace actor reference
+v0.13.5 - Silent Warnings: 3 sons de proximidade enviados pelo usuario, growl raro, grito no jumpscare, controles de chance, som baixo e reducao opcional experimental de musica.
+Audio em mod apenas com direitos de uso adequados.

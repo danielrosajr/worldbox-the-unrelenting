@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.13.3 - WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
+    // v0.13.5 - Silent Warnings: WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -44,8 +44,8 @@ namespace Arvak.TheUnrelenting
         // Arrancada surpresa: cada hospedeiro SLOW ou NORMAL tem uma chance
         // pequena de acelerar por alguns segundos, SEM trocar de corpo.
         // Todos os tempos abaixo sao em segundos REAIS (nao tempo de simulacao).
-        private const bool EnableSuddenBurst = true;
-        private const int BurstChancePercent = 25; // Por tentativa, nao por segundo.
+        // A chance da arrancada comum agora e configuravel no painel AntiKite.
+        // Nao confundir com a superarrancada do Anti-Kite (+75 speed).
         private const float FirstBurstCheckMin = 10f;
         private const float FirstBurstCheckMax = 17f;
         private const float NextBurstCheckMin = 12f;
@@ -163,6 +163,10 @@ namespace Arvak.TheUnrelenting
         private const string CfgAntiKiteSeconds = "AntiKiteSeconds";
         private const string CfgAntiKiteDuration = "AntiKiteBoostDuration";
         private const string CfgAntiKiteCooldown = "AntiKiteCooldown";
+        private const string CfgAntiKiteChance = "AntiKiteChancePercent";
+        private const string CfgAntiKiteCheckInterval = "AntiKiteRollIntervalSeconds";
+        private const string CfgEnableRandomBurst = "EnableRandomBurst";
+        private const string CfgRandomBurstChance = "RandomBurstChancePercent";
         private const string CfgAntiKiteVerbose = "VerboseAntiKiteLogs";
         private struct AntiKiteOptions
         {
@@ -171,6 +175,10 @@ namespace Arvak.TheUnrelenting
             public float Seconds;
             public float Duration;
             public float Cooldown;
+            public float Chance;
+            public float RollInterval;
+            public bool RandomBurstEnabled;
+            public float RandomBurstChance;
             public bool Verbose;
         }
         private struct KiteSample
@@ -182,7 +190,9 @@ namespace Arvak.TheUnrelenting
         private readonly List<KiteSample> _kiteSamples = new List<KiteSample>();
         private AntiKiteOptions _antiKiteOptions = new AntiKiteOptions
         {
-            Enabled = true, Radius = 15f, Seconds = 30f, Duration = 6f, Cooldown = 90f, Verbose = false
+            Enabled = true, Radius = 15f, Seconds = 30f, Duration = 6f, Cooldown = 90f,
+            Chance = 10f, RollInterval = 8f, RandomBurstEnabled = true,
+            RandomBurstChance = 5f, Verbose = false
         };
         private Actor _kiteHost;
         private Actor _kiteTarget;
@@ -197,6 +207,7 @@ namespace Arvak.TheUnrelenting
         private bool _kiteCleanupWarned;
         private bool _antiKiteConfigWarned;
         private float _nextKiteDebugLogAt;
+        private float _kiteNextRollAt;
 
 
         // The Witness: cobre ambas as variantes (Haunted e Haunted: Trauma).
@@ -608,6 +619,16 @@ namespace Arvak.TheUnrelenting
             public float SoundVolume;
             public bool DiagnosticHud;
             public bool Verbose;
+            public float PresenceChance;
+            public float PresenceRetry;
+            public float PresenceDuration;
+            public float PresenceRadius;
+            public bool RareGrowl;
+            public float GrowlChance;
+            public bool DuckMusic;
+            public float DuckMusicPercent;
+            public bool AudioPreview;
+            public int AudioPreviewIndex;
         }
         private ImmersionOptions _immersion;
         private bool _immersionConfigWarned;
@@ -617,6 +638,12 @@ namespace Arvak.TheUnrelenting
         private float _presenceNearSince = -1f;
         private float _nextPresenceSoundAt;
         private float _nextPresenceControllerProbeAt;
+        private float _nextMusicProbeAt;
+        private bool _musicDucked;
+        private object _musicBus;
+        private float _originalMusicVolume;
+        private float _nextMusicErrorLogAt;
+        private bool _previewAudioWasEnabled;
         private Texture2D _jumpscareTexture;
         private float _jumpscareUntil;
         private int _jumpscareCount;
@@ -636,7 +663,11 @@ namespace Arvak.TheUnrelenting
             ImmersionOptions o = new ImmersionOptions
             {
                 PresenceCue = false, Jumpscare = false, JumpscareChance = 100f,
-                SoundVolume = 20f, DiagnosticHud = false, Verbose = false
+                SoundVolume = 20f, DiagnosticHud = false, Verbose = false,
+                PresenceChance = 25f, PresenceRetry = 14f, PresenceDuration = 8f,
+                PresenceRadius = 12f, RareGrowl = true, GrowlChance = 8f,
+                DuckMusic = false, DuckMusicPercent = 60f,
+                AudioPreview = false, AudioPreviewIndex = 0
             };
             try
             {
@@ -649,6 +680,17 @@ namespace Arvak.TheUnrelenting
                 o.SoundVolume = Mathf.Clamp(Convert.ToSingle(g["ImmersionSoundVolumePercent"].GetValue()), 0f, 50f);
                 o.DiagnosticHud = (bool)g["ShowDiagnosticHud"].GetValue();
                 o.Verbose = (bool)g["VerboseImmersionLogs"].GetValue();
+                // Tolerancia a configuracoes antigas em cache: preservar os defaults.
+                try { o.PresenceChance = Mathf.Clamp(Convert.ToSingle(g["PresenceChancePercent"].GetValue()), 0f, 100f); } catch { }
+                try { o.PresenceRetry = Mathf.Clamp(Convert.ToSingle(g["PresenceRetrySeconds"].GetValue()), 5f, 90f); } catch { }
+                try { o.PresenceDuration = Mathf.Clamp(Convert.ToSingle(g["PresenceMinSeconds"].GetValue()), 2f, 30f); } catch { }
+                try { o.PresenceRadius = Mathf.Clamp(Convert.ToSingle(g["PresenceRadius"].GetValue()), 4f, 22f); } catch { }
+                try { o.RareGrowl = (bool)g["EnableRareGrowl"].GetValue(); } catch { }
+                try { o.GrowlChance = Mathf.Clamp(Convert.ToSingle(g["GrowlChancePercent"].GetValue()), 0f, 30f); } catch { }
+                try { o.DuckMusic = (bool)g["EnableMusicDucking"].GetValue(); } catch { }
+                try { o.DuckMusicPercent = Mathf.Clamp(Convert.ToSingle(g["MusicDuckingPercent"].GetValue()), 0f, 85f); } catch { }
+                try { o.AudioPreview = (bool)g["PreviewAudioOnce"].GetValue(); } catch { }
+                try { o.AudioPreviewIndex = Mathf.Clamp(Mathf.RoundToInt(Convert.ToSingle(g["AudioPreviewIndex"].GetValue())), 0, 4); } catch { }
                 _immersionConfigWarned = false;
             }
             catch (Exception e)
@@ -1169,6 +1211,19 @@ namespace Arvak.TheUnrelenting
             }
         }
 
+        private static float AudioDuration(string filename)
+        {
+            switch (filename)
+            {
+                case "presence.wav": return 5.1f;
+                case "whisper_1.wav": return 11.2f;
+                case "whisper_2.wav": return 9.7f;
+                case "growl.wav": return 6.7f;
+                case "death_sting.wav": return 6.2f;
+                default: return 7f;
+            }
+        }
+
         // WorldBox uses FMOD instead of Unity's regular AudioSource. Invoke FMOD by
         // reflection, so missing FMOD bindings never prevent this mod from compiling.
         private bool TryPlayWav(string file, float volume)
@@ -1223,12 +1278,22 @@ namespace Arvak.TheUnrelenting
                 Type groupType = play.GetParameters()[1].ParameterType;
                 Type channelType = play.GetParameters()[3].ParameterType.GetElementType();
                 if (channelType == null) return false;
-                object[] playArgs = { sound, groupType.IsValueType ? Activator.CreateInstance(groupType) : null, false, Activator.CreateInstance(channelType) };
+                // Criar pausado, regular o volume ANTES de iniciar para evitar
+                // um frame em volume total (especialmente no grito).
+                object[] playArgs = { sound, groupType.IsValueType ? Activator.CreateInstance(groupType) : null, true, Activator.CreateInstance(channelType) };
                 if (Convert.ToInt32(play.Invoke(core, playArgs)) != 0) return false;
                 object channel = playArgs[3];
                 MethodInfo setVolume = channelType.GetMethod("setVolume", new[] { typeof(float) });
-                if (setVolume != null) setVolume.Invoke(channel, new object[] { Mathf.Clamp(volume, 0f, 0.5f) });
-                _activeSounds.Add(new SoundHandle { Sound = sound, ReleaseAt = Time.unscaledTime + 7f });
+                MethodInfo setPaused = channelType.GetMethod("setPaused", new[] { typeof(bool) });
+                if (setVolume == null || setPaused == null)
+                {
+                    MethodInfo release = soundType.GetMethod("release", Type.EmptyTypes);
+                    if (release != null) release.Invoke(sound, new object[0]);
+                    return false;
+                }
+                setVolume.Invoke(channel, new object[] { Mathf.Clamp(volume, 0f, 0.35f) });
+                setPaused.Invoke(channel, new object[] { false });
+                _activeSounds.Add(new SoundHandle { Sound = sound, ReleaseAt = Time.unscaledTime + AudioDuration(file) + 1.5f });
                 return true;
             }
             catch (Exception e)
@@ -1237,6 +1302,25 @@ namespace Arvak.TheUnrelenting
                     LogWarning("THE UNRELENTING: IMMERSION FMOD INDISPONIVEL: " + e.Message);
                 return false;
             }
+        }
+
+        // Teste isolado do FMOD: nao depende de Worldfall, Haunted ou proximidade.
+        // Toggle OFF -> ON para ouvir novamente; nunca toca em loop.
+        private void UpdateAudioPreview()
+        {
+            if (!_immersion.AudioPreview)
+            {
+                _previewAudioWasEnabled = false;
+                return;
+            }
+            if (_previewAudioWasEnabled) return;
+            _previewAudioWasEnabled = true;
+            string[] files = { "presence.wav", "whisper_1.wav", "whisper_2.wav", "growl.wav", "death_sting.wav" };
+            string file = files[_immersion.AudioPreviewIndex];
+            float factor = file == "death_sting.wav" ? 0.65f : (file == "growl.wav" ? 0.40f : 0.55f);
+            bool played = TryPlayWav(file, _immersion.SoundVolume / 100f * factor);
+            LogInfo("THE UNRELENTING: IMMERSION TESTE AUDIO! ARQUIVO=" + file +
+                " SOM_REPRODUZIDO=" + played + " (desligue e religue PreviewAudioOnce para repetir)");
         }
 
         private void CleanPlayedSounds()
@@ -1255,44 +1339,167 @@ namespace Arvak.TheUnrelenting
             }
         }
 
+        // Experimentacao isolada: reduz SOMENTE um barramento de musica FMOD
+        // identificado como bus:/Music (nunca master ou volume global).
+        // Worldfall pode usar outro barramento; nesse caso nao fazemos nada.
+        private bool TryReadMusicBus(out object bus, out float volume)
+        {
+            bus = null;
+            volume = 1f;
+            try
+            {
+                Type runtime = null;
+                foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    runtime = a.GetType("FMODUnity.RuntimeManager", false);
+                    if (runtime != null) break;
+                }
+                if (runtime == null) return false;
+                PropertyInfo property = runtime.GetProperty("StudioSystem", BindingFlags.Static | BindingFlags.Public);
+                if (property == null) return false;
+                object studio = property.GetValue(null, null);
+                if (studio == null) return false;
+                MethodInfo getBus = null;
+                foreach (MethodInfo m in studio.GetType().GetMethods())
+                {
+                    var p = m.GetParameters();
+                    if (m.Name == "getBus" && p.Length == 2 && p[0].ParameterType == typeof(string) && p[1].ParameterType.IsByRef)
+                    { getBus = m; break; }
+                }
+                if (getBus == null) return false;
+                Type busType = getBus.GetParameters()[1].ParameterType.GetElementType();
+                if (busType == null) return false;
+                object[] args = { "bus:/Music", Activator.CreateInstance(busType) };
+                if (Convert.ToInt32(getBus.Invoke(studio, args)) != 0) return false;
+                bus = args[1];
+                MethodInfo getVolume = busType.GetMethod("getVolume", new[] { typeof(float).MakeByRefType(), typeof(float).MakeByRefType() });
+                if (getVolume == null) return false;
+                object[] v = { 1f, 1f };
+                if (Convert.ToInt32(getVolume.Invoke(bus, v)) != 0) return false;
+                volume = Convert.ToSingle(v[0]);
+                return !float.IsNaN(volume) && volume >= 0f && volume <= 1f;
+            }
+            catch { return false; }
+        }
+
+        private static bool SetBusMusicVolume(object bus, float volume)
+        {
+            if (bus == null) return false;
+            try
+            {
+                MethodInfo set = bus.GetType().GetMethod("setVolume", new[] { typeof(float) });
+                return set != null && Convert.ToInt32(set.Invoke(bus,
+                    new object[] { Mathf.Clamp01(volume) })) == 0;
+            }
+            catch { return false; }
+        }
+
+        private void RestoreMusicDucking()
+        {
+            if (!_musicDucked) return;
+            bool ok = SetBusMusicVolume(_musicBus, _originalMusicVolume);
+            if (_immersion.Verbose)
+                LogInfo("THE UNRELENTING: IMMERSION MUSICA RESTAURADA! RESULTADO=" + ok);
+            _musicDucked = false;
+            _musicBus = null;
+        }
+
+        private void UpdateMusicDucking(bool controlledAndClose, float now)
+        {
+            if (!_immersion.DuckMusic || !_immersion.PresenceCue || !controlledAndClose)
+            {
+                RestoreMusicDucking();
+                return;
+            }
+            if (_musicDucked || now < _nextMusicProbeAt) return;
+            _nextMusicProbeAt = now + 30f;
+            object bus;
+            float original;
+            if (TryReadMusicBus(out bus, out original))
+            {
+                if (SetBusMusicVolume(bus, original * (1f - _immersion.DuckMusicPercent / 100f)))
+                {
+                    _musicBus = bus;
+                    _originalMusicVolume = original;
+                    _musicDucked = true;
+                    LogInfo("THE UNRELENTING: IMMERSION MUSICA ABAIXADA! BARRAMENTO=bus:/Music ORIGINAL=" +
+                        original.ToString("F2") + " REDUCAO=" + _immersion.DuckMusicPercent.ToString("F0") + "%");
+                }
+            }
+            else if (_immersion.Verbose && now >= _nextMusicErrorLogAt)
+            {
+                _nextMusicErrorLogAt = now + 30f;
+                LogInfo("THE UNRELENTING: IMMERSION MUSICA: bus:/Music NAO DISPONIVEL; SEM ALTERAR AUDIO GLOBAL.");
+            }
+        }
+
         private void UpdatePresenceCue()
         {
             if (!_immersion.PresenceCue || !Usable(_host) || !Usable(_target))
             {
+                RestoreMusicDucking();
                 _presenceTrackedTarget = null;
                 _presenceNearSince = -1f;
                 return;
             }
             float now = Time.unscaledTime;
             float distance = _host.distanceToActorTile(_target);
-            if (distance > 12f)
+            if (distance > _immersion.PresenceRadius)
             {
+                RestoreMusicDucking();
                 _presenceTrackedTarget = null;
                 _presenceNearSince = -1f;
                 return;
             }
             if (!object.ReferenceEquals(_presenceTrackedTarget, _target))
             {
+                RestoreMusicDucking();
                 _presenceTrackedTarget = _target;
                 _presenceNearSince = now;
+                _nextPresenceSoundAt = now + _immersion.PresenceDuration;
                 return;
             }
-            if (now - _presenceNearSince < 8f || now < _nextPresenceSoundAt) return;
-            // Failed control lookups must not reflect over every loaded assembly
-            // 5+ times per second during close pursuit.
+            if (now - _presenceNearSince < _immersion.PresenceDuration) return;
+            // Checagem de controle com intervalo para evitar reflexao a cada frame.
             if (now < _nextPresenceControllerProbeAt) return;
-            _nextPresenceControllerProbeAt = now + 3f;
-            if (!IsPlayerControlling(_target))
+            _nextPresenceControllerProbeAt = now + 2f;
+            bool controlled = IsPlayerControlling(_target);
+            UpdateMusicDucking(controlled, now);
+            if (!controlled)
             {
-                ReportUnverifiedControl(_target);
+                if (_immersion.Verbose) ReportUnverifiedControl(_target);
                 return;
             }
-            _nextPresenceSoundAt = now + 22f;
-            _presenceCueCount++;
-            bool played = TryPlayWav("presence.wav", _immersion.SoundVolume / 100f * 0.4f);
+            if (now < _nextPresenceSoundAt || _kiteBoostActive) return;
+            _nextPresenceSoundAt = now + _immersion.PresenceRetry;
+            float roll = (float)(_random.NextDouble() * 100d);
+            if (roll >= _immersion.PresenceChance)
+            {
+                if (_immersion.Verbose)
+                    LogInfo("THE UNRELENTING: IMMERSION SOM NAO SORTEADO! DISTANCIA=" + distance.ToString("F1") +
+                        " SORTEIO=" + roll.ToString("F1") + " CHANCE=" + _immersion.PresenceChance.ToString("F1") + "%");
+                return;
+            }
+            // Growl somente quando muito perto e a presenca ja e prolongada.
+            float choice = (float)(_random.NextDouble() * 100d);
+            bool useGrowl = _immersion.RareGrowl && distance <= 7f &&
+                now - _presenceNearSince >= _immersion.PresenceDuration + 3f &&
+                choice < _immersion.GrowlChance;
+            string file;
+            if (useGrowl) file = "growl.wav";
+            else
+            {
+                float which = (float)(_random.NextDouble() * 100d);
+                file = which < 46f ? "presence.wav" : (which < 73f ? "whisper_1.wav" : "whisper_2.wav");
+            }
+            // Normalizacao dos WAV + ganho por tipo = sussurros bem discretos.
+            float factor = file == "growl.wav" ? 0.40f : (file == "presence.wav" ? 0.60f : 0.52f);
+            bool played = TryPlayWav(file, _immersion.SoundVolume / 100f * factor);
+            if (played) _presenceCueCount++;
             if (_immersion.Verbose)
-                LogInfo("THE UNRELENTING: IMMERSION SINAL DE PROXIMIDADE! DISTANCIA=" + distance.ToString("F1") +
-                    " SOM_REPRODUZIDO=" + played + " TOTAL=" + _presenceCueCount);
+                LogInfo("THE UNRELENTING: IMMERSION SOM DE PROXIMIDADE! ARQUIVO=" + file +
+                    " DISTANCIA=" + distance.ToString("F1") + " SOM_REPRODUZIDO=" + played +
+                    " TOTAL=" + _presenceCueCount);
         }
 
         private void MaybeStartDeathJumpscare(Actor victim, bool confirmedControl)
@@ -1306,9 +1513,15 @@ namespace Arvak.TheUnrelenting
             }
             _jumpscareCount++;
             _jumpscareUntil = Time.unscaledTime + 1.25f;
-            bool played = TryPlayWav("death_sting.wav", _immersion.SoundVolume / 100f);
+            // Distorted scream normalizado: impedir estourar os ouvidos.
+            bool played = TryPlayWav("death_sting.wav", _immersion.SoundVolume / 100f * 0.65f);
             LogInfo("THE UNRELENTING: IMMERSION JUMPSCARE EXIBIDO! VITIMA_TEMP_ID=" + victim.GetHashCode() +
                 " SOM_REPRODUZIDO=" + played + " TOTAL=" + _jumpscareCount);
+        }
+
+        private void OnDisable()
+        {
+            RestoreMusicDucking();
         }
 
         private void OnGUI()
@@ -1377,7 +1590,7 @@ namespace Arvak.TheUnrelenting
             {
                 id = AntiKiteBoostTraitId,
                 group_id = GroupId,
-                path_icon = "ui/icons/neomodloader",
+                path_icon = "ui/icons/unrelenting_punishing_rush",
                 can_be_given = false,
                 can_be_removed = false,
                 can_be_cured = false,
@@ -1388,12 +1601,13 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.13.3 WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.13.5 SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
             LogInfo("THE UNRELENTING: IMMERSION: WorldPace Bridge experimental; controle exato via _possessed:Actor e diagnosticos via VerboseImmersionLogs.");
             LoadImmersionArt();
+            LogInfo("THE UNRELENTING: SILENT WARNINGS: 3 sinais discretos, growl raro e grito de morte; audio configuravel e desligado por padrao.");
             LogInfo("THE UNRELENTING: ANTI-KITE PREPARADO! BONUS_SPEED=" + PunishingRushSpeedBonus.ToString("F0") +
-                " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s; CONFIGURAVEL NO NML.");
+                " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s CHANCE_DEFAULT=10% INTERVALO_DEFAULT=8s; CONFIGURAVEL NO NML.");
             LogInfo("THE UNRELENTING: WITNESS: rastreio de mortes ativo; transmissao a assassino PROVAVEL desligada por padrao.");
             LogInfo("THE UNRELENTING: TRAUMA: observacao de mortes violentas e transferencia configuraveis no NML; INFECCAO DESLIGADA POR PADRAO.");
             LogInfo("THE UNRELENTING: PURSUIT AI: precisao por proximidade e resgate por possessao configuraveis.");
@@ -1402,8 +1616,8 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: CHANCES DE VELOCIDADE LENTO=" + SlowChancePercent +
                 "% NORMAL=" + NormalChancePercent + "% RAPIDO=" +
                 (100 - SlowChancePercent - NormalChancePercent) + "%.");
-            LogInfo("THE UNRELENTING: ARRANCADAS CONFIGURADAS! ATIVO=" + EnableSuddenBurst +
-                " CHANCE_POR_TENTATIVA=" + BurstChancePercent + "% DURACAO=3-5.5s REAL.");
+            LogInfo("THE UNRELENTING: ARRANCADAS CONFIGURAVEIS! ALEATORIA_DEFAULT=5% POR TENTATIVA; " +
+                "ANTI-KITE_DEFAULT=10% A CADA 8s APOS PROVOCACAO; ambas ajustaveis para 0% no NML.");
         }
 
         // Centralizar o teste e importante: todas as origens compartilham
@@ -1610,7 +1824,9 @@ namespace Arvak.TheUnrelenting
             AntiKiteOptions result = new AntiKiteOptions
             {
                 Enabled = true, Radius = 15f, Seconds = 30f, Duration = 6f,
-                Cooldown = 90f, Verbose = false
+                Cooldown = 90f, Chance = 10f, RollInterval = 8f,
+                RandomBurstEnabled = true, RandomBurstChance = 5f,
+                Verbose = false
             };
             try
             {
@@ -1623,6 +1839,16 @@ namespace Arvak.TheUnrelenting
                 result.Duration = Mathf.Clamp(Convert.ToSingle(group[CfgAntiKiteDuration].GetValue()), 2f, 15f);
                 result.Cooldown = Mathf.Clamp(Convert.ToSingle(group[CfgAntiKiteCooldown].GetValue()), 20f, 240f);
                 result.Verbose = (bool)group[CfgAntiKiteVerbose].GetValue();
+                // Valores novos sao lidos individualmente para nao quebrar
+                // instalacoes com default_config antigo ainda em cache no NML.
+                try { result.Chance = Mathf.Clamp(Convert.ToSingle(group[CfgAntiKiteChance].GetValue()), 0f, 100f); }
+                catch { /* antigo perfil: manter 10% */ }
+                try { result.RollInterval = Mathf.Clamp(Convert.ToSingle(group[CfgAntiKiteCheckInterval].GetValue()), 2f, 60f); }
+                catch { /* antigo perfil: manter 8s */ }
+                try { result.RandomBurstEnabled = (bool)group[CfgEnableRandomBurst].GetValue(); }
+                catch { /* antigo perfil: manter ligado */ }
+                try { result.RandomBurstChance = Mathf.Clamp(Convert.ToSingle(group[CfgRandomBurstChance].GetValue()), 0f, 100f); }
+                catch { /* antigo perfil: manter 5% */ }
                 _antiKiteConfigWarned = false;
             }
             catch (Exception e)
@@ -1644,6 +1870,7 @@ namespace Arvak.TheUnrelenting
             _kiteAwaySince = -1f;
             _kiteNextSampleAt = 0f;
             _nextKiteDebugLogAt = 0f;
+            _kiteNextRollAt = 0f;
             if (forgetIdentity) { _kiteHost = null; _kiteTarget = null; }
         }
 
@@ -1793,16 +2020,36 @@ namespace Arvak.TheUnrelenting
                     " DESLOCAMENTO_12S=" + displacement.ToString("F1") +
                     " CIRCULANDO=" + circling);
             }
-            if (proximity >= _antiKiteOptions.Seconds && circling && !_burstActive)
+            // A provocacao apenas habilita SORTEIOS periodicos. Nao e mais
+            // uma superarrancada garantida ao atingir o tempo minimo.
+            if (proximity >= _antiKiteOptions.Seconds && circling && !_burstActive &&
+                now >= _kiteNextRollAt && _antiKiteOptions.Chance > 0f)
             {
-                LogInfo("THE UNRELENTING: ANTI-KITE PROVOCACAO DETECTADA! " +
-                    "HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
-                    " ALVO_TEMP_ID=" + _target.GetHashCode() +
-                    " PERTO_SEG=" + proximity.ToString("F1") +
-                    " DISTANCIA=" + distance.ToString("F1") +
-                    " CAMINHO=" + path.ToString("F1") +
-                    " DESLOCAMENTO=" + displacement.ToString("F1"));
-                StartPunishingRush(now);
+                _kiteNextRollAt = now + _antiKiteOptions.RollInterval;
+                float roll = (float)(_random.NextDouble() * 100.0);
+                bool triggered = roll < _antiKiteOptions.Chance;
+                if (_antiKiteOptions.Verbose || triggered)
+                {
+                    LogInfo("THE UNRELENTING: ANTI-KITE SORTEIO! " +
+                        "HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
+                        " ALVO_TEMP_ID=" + _target.GetHashCode() +
+                        " PERTO_SEG=" + proximity.ToString("F1") +
+                        " DISTANCIA=" + distance.ToString("F1") +
+                        " CHANCE=" + _antiKiteOptions.Chance.ToString("F1") + "%" +
+                        " SORTEIO=" + roll.ToString("F2") +
+                        " ATIVOU=" + triggered);
+                }
+                if (triggered)
+                {
+                    LogInfo("THE UNRELENTING: ANTI-KITE PROVOCACAO DETECTADA! " +
+                        "HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
+                        " ALVO_TEMP_ID=" + _target.GetHashCode() +
+                        " PERTO_SEG=" + proximity.ToString("F1") +
+                        " DISTANCIA=" + distance.ToString("F1") +
+                        " CAMINHO=" + path.ToString("F1") +
+                        " DESLOCAMENTO=" + displacement.ToString("F1"));
+                    StartPunishingRush(now);
+                }
             }
         }
 
@@ -2438,18 +2685,24 @@ namespace Arvak.TheUnrelenting
         private void UpdateSuddenBurst()
         {
             if (_kiteBoostActive) return;
-            if (!EnableSuddenBurst || !Usable(_host) || !Usable(_target)) return;
+            // Limpar qualquer Fast temporario caso usuario desligue a arrancada
+            // enquanto ela ainda esta acontecendo.
             if (_burstActive)
             {
-                if (Time.unscaledTime >= _burstEndsAt) EndSuddenBurst();
+                if (Time.unscaledTime >= _burstEndsAt || !_antiKiteOptions.RandomBurstEnabled)
+                    EndSuddenBurst();
                 return;
             }
+            if (!_antiKiteOptions.RandomBurstEnabled ||
+                _antiKiteOptions.RandomBurstChance <= 0f ||
+                !Usable(_host) || !Usable(_target)) return;
             if (Time.unscaledTime < _nextBurstCheckAt) return;
             _nextBurstCheckAt = Time.unscaledTime + RandomSeconds(NextBurstCheckMin, NextBurstCheckMax);
             if (_currentSpeed == PursuitSpeed.Fast) return;
             float distance = _host.distanceToActorTile(_target);
             if (distance < MinBurstTargetDistance || distance > MaxBurstTargetDistance) return;
-            if (_random.Next(100) < BurstChancePercent) StartSuddenBurst();
+            if (_random.NextDouble() * 100.0 < _antiKiteOptions.RandomBurstChance)
+                StartSuddenBurst();
         }
 
         // Leitura defensiva do tipo real do Actor: nenhuma mudanca no asset.
@@ -2772,6 +3025,7 @@ namespace Arvak.TheUnrelenting
 
         private void EndEntity(string reason, bool vanish)
         {
+            RestoreMusicDucking();
             if (_host != null)
             {
                 Actor old = _host;
@@ -2804,10 +3058,13 @@ namespace Arvak.TheUnrelenting
 
         private void ResetForWorld()
         {
+            RestoreMusicDucking();
             _presenceTrackedTarget = null;
             _presenceNearSince = -1f;
             _nextPresenceSoundAt = 0f;
             _nextPresenceControllerProbeAt = 0f;
+            _nextMusicProbeAt = 0f;
+            _previewAudioWasEnabled = false;
             _jumpscareUntil = 0f;
             _lastWitnessSummary = null;
             _lastTraumaSummary = null;
@@ -2916,6 +3173,8 @@ namespace Arvak.TheUnrelenting
                 }
 
                 _immersion = ReadImmersionOptions();
+                if (!_immersion.PresenceCue || !Usable(_host) || !Usable(_target)) RestoreMusicDucking();
+                UpdateAudioPreview();
                 CleanPlayedSounds();
                 _antiKiteOptions = ReadAntiKiteOptions();
                 if (!_antiKiteOptions.Enabled && _kiteBoostActive) EndPunishingRush();

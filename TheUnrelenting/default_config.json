@@ -118,6 +118,32 @@
       "MaxFloatVal": 240.0
     },
     {
+      "Id": "AntiKiteChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 10.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
+    },
+    {
+      "Id": "AntiKiteRollIntervalSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 8.0,
+      "MinFloatVal": 2.0,
+      "MaxFloatVal": 60.0
+    },
+    {
+      "Id": "EnableRandomBurst",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "RandomBurstChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 5.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
+    },
+    {
       "Id": "VerboseAntiKiteLogs",
       "Type": "SWITCH",
       "BoolVal": false
@@ -224,6 +250,70 @@
     },
     {
       "Id": "VerboseImmersionLogs",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "PresenceChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 25.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
+    },
+    {
+      "Id": "PresenceRetrySeconds",
+      "Type": "SLIDER",
+      "FloatVal": 14.0,
+      "MinFloatVal": 5.0,
+      "MaxFloatVal": 90.0
+    },
+    {
+      "Id": "PresenceMinSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 8.0,
+      "MinFloatVal": 2.0,
+      "MaxFloatVal": 30.0
+    },
+    {
+      "Id": "PresenceRadius",
+      "Type": "SLIDER",
+      "FloatVal": 12.0,
+      "MinFloatVal": 4.0,
+      "MaxFloatVal": 22.0
+    },
+    {
+      "Id": "EnableRareGrowl",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "GrowlChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 8.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 30.0
+    },
+    {
+      "Id": "EnableMusicDucking",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "MusicDuckingPercent",
+      "Type": "SLIDER",
+      "FloatVal": 60.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 85.0
+    },
+    {
+      "Id": "AudioPreviewIndex",
+      "Type": "SLIDER",
+      "FloatVal": 0.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 4.0
+    },
+    {
+      "Id": "PreviewAudioOnce",
       "Type": "SWITCH",
       "BoolVal": false
     }

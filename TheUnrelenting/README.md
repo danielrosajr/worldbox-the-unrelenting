@@ -1,3 +1,55 @@
+# The Unrelenting v0.13.4 — Controlled Fury
+
+Esta versao usa **v0.13.3 — WorldPace Bridge** como base, preservando Origins, The Witness, Trauma Witness, Bloodline, Worldfall Bridge, som, arte, perseguicao e Anti-Kite.
+
+## Duas arrancadas, duas probabilidades independentes
+
+O sistema **AntiKite** ja permitia editar raio, tempo perto, duracao e cooldown, mas o castigo era garantido apos cumprir as condicoes de movimento circular. Isso mudou:
+
+- **Chance do Anti-Kite:** 10% por tentativa (padrao); apenas depois de 30 segundos perto, com deslocamento circular comprovado. Novo sorteio a cada 8 segundos reais enquanto as condicoes continuarem. O +75 `speed` dura 6s quando dispara, seguido de 90s de cooldown.
+- **Arrancada aleatoria normal:** 5% por tentativa (novo padrao), verificada depois do primeiro periodo de 10-17 segundos no hospedeiro e novamente a cada 12-22 segundos reais. Essa usa a trait nativa `fast`, nao o superbonus +75.
+- **Para testar o Worldfall sem arrancadas:** deixe `AntiKiteChancePercent=0` e `RandomBurstChancePercent=0`, ou desligue `EnableAntiKite` e `EnableRandomBurst`.
+- O Anti-Kite so sorteia quando a vitima se movimenta em circulos; ficar parado proximo nao ativa esse castigo. Mesmo sem boosts, a entidade continua se aproximando e pode matar em contato. Para testes de proximidade, mantenha distancia maior que 1.5 tile.
+
+## Nova trait com icone
+
+`ArvakTheUnrelenting_PunishingRush` (mesmo ID, preservado) usa agora o icone de corrida vermelha em `GameResources/ui/icons/unrelenting_punishing_rush.png`. A trait continua temporaria, automatica, nao selecionavel no editor, e aparece durante a corrida sobrenatural. As tres outras traits Haunted nao mudaram.
+
+## Configuracoes em NeoModLoader > The Unrelenting > AntiKite
+
+| Opcao | Padrao | Efeito |
+|---|---:|---|
+| EnableAntiKite | Ligado | Permite castigo de provocacao |
+| AntiKiteRadius | 15 tiles | Raio de proximidade |
+| AntiKiteSeconds | 30 s | Tempo minimo perto para considerar circulos |
+| AntiKiteChancePercent | 10% | Chance de supercorrida por tentativa |
+| AntiKiteRollIntervalSeconds | 8 s | Intervalo entre sorteios quando esta circulando |
+| AntiKiteBoostDuration | 6 s | Duracao do +75 de speed |
+| AntiKiteCooldown | 90 s | Tempo de espera apos supercorrida |
+| EnableRandomBurst | Ligado | Arrancadas comuns (Fast) |
+| RandomBurstChancePercent | 5% | Chance de arrancada comum por tentativa |
+| VerboseAntiKiteLogs | Desligado | Mostra os sorteios perdidos tambem |
+
+Todos os tempos sao REAIS, nao aumentam com a velocidade do mundo. A chance e por tentativa elegivel, nao por segundo.
+
+## Diagnostico
+
+```bash
+grep -nE 'V0.13.4|ANTI-KITE SORTEIO|ANTI-KITE JUMPSCARE|ARRANCADA INICIADA|ARRANCADA ENCERRADA|WORLDFALL PROBE|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 100
+```
+
+As mensagens antigas `ANTI-KITE JUMPSCARE` sao sobre o BOOST DE VELOCIDADE, nao sobre a imagem de susto no monitor. O som e imagem do jumpscare de morte continuam opt-in e dependem do controle do Worldfall confirmado.
+
+## Limites
+
+- Compilacao in-game e comportamento final nao testados neste ambiente. Primeiro teste em mundo descartavel.
+- Se o NML manter configuracoes de perfil antigo sem incluir novos campos, o mod usa valores padrao defensivos (10% Anti-Kite, 8s, 5% arrancada normal). Confira se os quatro novos controles aparecem no menu.
+- O personagem pode ser executado normalmente mesmo com as duas chances em 0%.
+
+**Rollback:** v0.13.3 (pasta completa). **GitHub:** `feat: make anti-kite bursts probabilistic and add rush trait icon`.
+
+---
+
 # The Unrelenting v0.13.0 — Bloodline
 
 ## Nova mecanica — a maldicao alcanca a familia
@@ -221,3 +273,22 @@ grep -nE 'WORLDFALL PROBE V3|WORLDFALL CONTROLE COMPROVADO|CONTROLE NAO COMPROVA
 The fullscreen visual jumpscare and its sound remain opt-in. Game tests of this Worldfall version are still required. If WorldPace does not clear its `_possessed` field on release, DO NOT enable Death Jumpscare; send the V3 logs to adapt the bridge.
 
 Commit: `fix: detect Worldfall possession through WorldPace actor reference`
+
+
+## v0.13.5 — Silent Warnings (sons enviados pelo usuario)
+
+- `Audio/presence.wav`: som sutil `sound_cue_near_entity.wav`.
+- `Audio/whisper_1.wav`: sussurros `HORROR SOUND EFFECT 3 - Whispers`.
+- `Audio/whisper_2.wav`: vozes e sussurros `Horror Sound Effect - Voices (Whispers)`.
+- `Audio/growl.wav`: trecho de aproximadamente 6,6 segundos do growl enviado, apenas em proximidade extrema.
+- `Audio/death_sting.wav`: `Distorted Scream 2` atenuado, apenas quando Worldfall comprova controle da vitima e o jumpscare esta ligado.
+- Os WAVs foram atenuados/normalizados e recebem volume por canal no FMOD **antes de começar a tocar**. A liberacao do buffer leva em conta a duracao real (corrige o corte dos sussurros longos).
+- Proximidade: exige controle confirmado, tempo/raio, chance a cada intervalo; seleciona um dos 3 sons, ocasionalmente o growl. **Nao e possivel saber se o jogador realmente percebeu a entidade**. O sistema modela isso por presenca prolongada e sorteio, sem efeito fixo.
+- O gatilho de som de proximidade nao depende do Anti-Kite e permanece bloqueado durante a superarrancada.
+- Musica: `EnableMusicDucking` tenta reduzir **apenas** `bus:/Music` se encontrado; desativado por padrao. Restaura volume na saida da proximidade, troca de mundo e desativacao do mod. Nao garante compatibilidade com a trilha independente de Worldfall.
+- A configuracao `EnablePresenceCue` continua desligada por padrao.
+- Os audios foram fornecidos pelo usuario; confirmar direitos de redistribuicao/licenca antes de publicar Audio/ no GitHub ou em um release publico.
+- Para teste: ativar `EnablePresenceCue`, `VerboseImmersionLogs`, ajustar Chance=100% e Intervalo=5s, volume inicial 10-20%. Confirmar primeiro a ponte `WorldPace._possessed`.
+- Commit sugerido: `feat: add randomized quiet horror cues and safe optional music ducking`.
+
+- PREVIEW: `Immersion > AudioPreviewIndex` (0=cue, 1=whisper1, 2=whisper2, 3=growl, 4=death scream) e `PreviewAudioOnce`. Toggle OFF/ON toca uma unica vez mesmo sem controlar Haunted, permitindo testar FMOD antes do Worldfall.
