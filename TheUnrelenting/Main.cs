@@ -6,54 +6,65 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
+    // v0.7.0 - UMA entidade, multiplas vitimas em fila, corpo hospedeiro trocavel.
+    // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
+    // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
+    // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
     public class Main : BasicMod<Main>
     {
-        // IDs persistentes: NAO alterar entre versoes, para preservar a trait nos saves.
         public const string TraitId = "ArvakTheUnrelenting_Haunted";
         public const string GroupId = "ArvakTheUnrelenting_Group";
 
-        // v0.6.0: execucao TESTAVEL ao contato. Traits nativas sao provisórias;
-        // elas NAO garantem invulnerabilidade nem neutralidade absoluta.
-        // Nao use em saves importantes: o jogo pode salvar modificadores temporarios.
-        private static readonly string[] TestTraits = {
-            "slow", "peaceful", "immortal", "super_health"
-        };
-        // Nao escolha unidades que possam perder Fast/Agile/Plague por opostos.
-        private static readonly string[] OppositeRiskTraits = {
-            "fast", "agile", "plague"
-        };
-        private const float MinStartDistance = 4f;
-        private const float PreferredMaxDistance = 55f;
         private const float ScanInterval = 2f;
+        private const float ContactDistance = 1.5f;
+        private const float MinStartDistance = 4f;
+        private const float PreferMaxDistance = 50f;
         private const float ProgressLogInterval = 15f;
+        private const float FirstHostChangeAfter = 22f;
+        private const float HostChangeInterval = 32f;
+        private const float MinHostHopDistance = 3f;
+        private const float MaxHostHopDistance = 24f;
+        private const bool EnableHostHopping = true;
 
-        private HashSet<Actor> _hauntedUnits = new HashSet<Actor>();
-        private readonly Dictionary<Actor, Actor> _pursuerByTarget = new Dictionary<Actor, Actor>();
-        private readonly HashSet<Actor> _noCandidateNotice = new HashSet<Actor>();
-        private readonly Dictionary<Actor, float> _lastLoggedDistance = new Dictionary<Actor, float>();
-        private readonly Dictionary<Actor, float> _lastProgressTime = new Dictionary<Actor, float>();
-        private readonly HashSet<Actor> _reachedTargets = new HashSet<Actor>();
-        // Guarda SOMENTE traits que nosso mod adicionou. Nao remover traits preexistentes.
-        private readonly Dictionary<Actor, HashSet<string>> _temporaryTraits =
-            new Dictionary<Actor, HashSet<string>>();
+        // Apenas as especies comuns predefinidas. IDs podem variar por versao;
+        // a lista e verificada contra os assets reais dos atores no mundo.
+        private static readonly HashSet<string> AllowedHostAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "human", "elf", "dwarf", "orc", "sheep", "cow", "chicken",
+            "rabbit", "cat", "wolf", "fox", "bear", "goat", "alpaca",
+            "capybara", "monkey", "rat", "penguin", "raccoon", "armadillo"
+        };
+        private static readonly string[] TemporaryTraitIds = { "slow", "peaceful", "immortal", "super_health" };
+        // Prevenir a perda involuntaria de traits com possiveis opostos.
+        private static readonly string[] OppositeRiskTraits = { "fast", "agile", "plague" };
+
         private readonly System.Random _random = new System.Random();
+        private readonly List<Actor> _targetQueue = new List<Actor>();
+        private readonly HashSet<Actor> _knownHaunted = new HashSet<Actor>();
+        private readonly Dictionary<Actor, HashSet<string>> _traitsAddedByMod =
+            new Dictionary<Actor, HashSet<string>>();
+
+        private Actor _host;
+        private Actor _target;
         private object _activeWorldReference;
         private float _scanClock;
-        private bool _reportedScanError;
+        private float _lastProgressTime;
+        private float _lastDistance;
+        private float _nextHostChangeTime;
+        private bool _reportedError;
+        private bool _warnedNoHost;
+        private int _killsThisChain;
 
         protected override void OnModLoad()
         {
             LogInfo("THE UNRELENTING: MOD CARREGADO COM SUCESSO!");
-
-            ActorTraitGroupAsset group = new ActorTraitGroupAsset()
+            AssetManager.trait_groups.add(new ActorTraitGroupAsset
             {
                 id = GroupId,
                 name = "trait_group_ArvakTheUnrelenting",
                 color = "#9755C7"
-            };
-            AssetManager.trait_groups.add(group);
-
-            ActorTrait haunted = new ActorTrait()
+            });
+            AssetManager.traits.add(new ActorTrait
             {
                 id = TraitId,
                 group_id = GroupId,
@@ -62,381 +73,366 @@ namespace Arvak.TheUnrelenting
                 can_be_removed = true,
                 can_be_cured = false,
                 needs_to_be_explored = false
-            };
-            AssetManager.traits.add(haunted);
-
+            });
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.6.0 CONTATO LETAL ATIVO (TESTE EM MUNDO DESCARTAVEL).");
+            LogInfo("THE UNRELENTING: V0.7.0 CADEIA DE VITIMAS + TROCA EXPERIMENTAL DE HOSPEDEIRO ATIVA.");
         }
 
-        private void ResetTracking()
+        private static bool Usable(Actor a)
         {
-            CleanupAllTemporaryTraits();
-            _hauntedUnits.Clear();
-            _pursuerByTarget.Clear();
-            _noCandidateNotice.Clear();
-            _lastLoggedDistance.Clear();
-            _lastProgressTime.Clear();
-            _reachedTargets.Clear();
-            _temporaryTraits.Clear();
+            return a != null && a.isAlive() && a.current_tile != null;
         }
 
-        private void ForgetTarget(Actor target)
+        // Reflection apenas para mutacoes de traits, pois os overloads mudaram
+        // entre versoes. Ao registrar/limpar, checamos o resultado de hasTrait.
+        private static bool MutateTrait(Actor a, string methodName, string traitId)
         {
-            Actor pursuer;
-            if (_pursuerByTarget.TryGetValue(target, out pursuer))
-                CleanupTemporaryTraits(pursuer);
-            _pursuerByTarget.Remove(target);
-            _noCandidateNotice.Remove(target);
-            _lastLoggedDistance.Remove(target);
-            _lastProgressTime.Remove(target);
-            _reachedTargets.Remove(target);
-        }
-
-        private static bool HasUsableTile(Actor actor)
-        {
-            return actor != null && actor.isAlive() && actor.current_tile != null;
-        }
-
-        // Reflective method dispatch: avoids compile errors when a WorldBox build
-        // changes the signature of addTrait/removeTrait. Failures stay in the log.
-        private static bool InvokeTraitMutation(Actor actor, string methodName, string traitId)
-        {
-            if (actor == null) return false;
-            MethodInfo[] methods = actor.GetType().GetMethods(
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            foreach (MethodInfo method in methods)
+            if (a == null) return false;
+            foreach (MethodInfo method in a.GetType().GetMethods(
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             {
                 if (method.Name != methodName) continue;
-                ParameterInfo[] parameters = method.GetParameters();
-                if (parameters.Length < 1 || parameters[0].ParameterType != typeof(string))
-                    continue;
-
-                object[] args = new object[parameters.Length];
+                ParameterInfo[] ps = method.GetParameters();
+                if (ps.Length == 0 || ps[0].ParameterType != typeof(string)) continue;
+                object[] args = new object[ps.Length];
                 args[0] = traitId;
                 bool supported = true;
-                for (int i = 1; i < parameters.Length; i++)
+                for (int i = 1; i < ps.Length; i++)
                 {
-                    if (parameters[i].HasDefaultValue)
-                        args[i] = parameters[i].DefaultValue;
-                    else if (parameters[i].ParameterType == typeof(bool))
-                        args[i] = false;
-                    else if (parameters[i].ParameterType.IsValueType)
-                        args[i] = Activator.CreateInstance(parameters[i].ParameterType);
-                    else
-                        supported = false;
+                    if (ps[i].HasDefaultValue) args[i] = ps[i].DefaultValue;
+                    else if (ps[i].ParameterType == typeof(bool)) args[i] = false;
+                    else if (ps[i].ParameterType.IsValueType)
+                        args[i] = Activator.CreateInstance(ps[i].ParameterType);
+                    else supported = false;
                 }
                 if (!supported) continue;
-                try
-                {
-                    method.Invoke(actor, args);
-                    return true;
-                }
-                catch
-                {
-                    // Different overload; test the next one, if any.
-                }
+                try { method.Invoke(a, args); return true; }
+                catch { /* proximo overload */ }
             }
             return false;
         }
 
-        private void ApplyTemporaryTraits(Actor pursuer)
+        private void ApplyTemporaryTraits(Actor a)
         {
-            if (!HasUsableTile(pursuer)) return;
+            if (!Usable(a)) return;
             HashSet<string> added = new HashSet<string>();
-            foreach (string traitId in TestTraits)
+            foreach (string id in TemporaryTraitIds)
             {
-                if (pursuer.hasTrait(traitId)) continue;
-                bool called = InvokeTraitMutation(pursuer, "addTrait", traitId);
-                if (called && pursuer.hasTrait(traitId))
+                if (a.hasTrait(id)) continue;
+                bool invoked = MutateTrait(a, "addTrait", id);
+                if (invoked && a.hasTrait(id))
                 {
-                    added.Add(traitId);
-                    LogInfo("THE UNRELENTING: TRAIT TEMPORARIA APLICADA PERSEGUIDOR_TEMP_ID=" +
-                            pursuer.GetHashCode() + " TRAIT=" + traitId);
+                    added.Add(id);
+                    LogInfo("THE UNRELENTING: TRAIT TEMPORARIA APLICADA HOSPEDEIRO_TEMP_ID=" +
+                        a.GetHashCode() + " TRAIT=" + id);
                 }
                 else
                 {
-                    LogWarning("THE UNRELENTING: NAO FOI POSSIVEL APLICAR TRAIT=" + traitId +
-                               " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode() +
-                               " (verificar ID/API no log)");
+                    LogWarning("THE UNRELENTING: NAO FOI POSSIVEL APLICAR TRAIT=" + id +
+                        " HOSPEDEIRO_TEMP_ID=" + a.GetHashCode());
                 }
             }
-            if (added.Count > 0) _temporaryTraits[pursuer] = added;
-            pursuer.setStatsDirty();
+            if (added.Count != 0) _traitsAddedByMod[a] = added;
+            a.setStatsDirty();
         }
 
-        private void CleanupTemporaryTraits(Actor pursuer)
+        private void CleanupTemporaryTraits(Actor a)
         {
-            if (pursuer == null) return;
-            HashSet<string> added;
-            if (!_temporaryTraits.TryGetValue(pursuer, out added)) return;
-            if (pursuer.isAlive())
+            if (a == null) return;
+            HashSet<string> ids;
+            if (!_traitsAddedByMod.TryGetValue(a, out ids)) return;
+            if (a.isAlive())
             {
-                foreach (string id in added)
+                foreach (string id in ids)
                 {
-                    if (!pursuer.hasTrait(id)) continue;
-                    bool called = InvokeTraitMutation(pursuer, "removeTrait", id);
+                    if (!a.hasTrait(id)) continue;
+                    bool ok = MutateTrait(a, "removeTrait", id) && !a.hasTrait(id);
                     LogInfo("THE UNRELENTING: LIMPEZA TRAIT=" + id +
-                            " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode() +
-                            " RESULTADO=" + (called && !pursuer.hasTrait(id) ? "OK" : "VERIFICAR"));
+                        " HOSPEDEIRO_TEMP_ID=" + a.GetHashCode() +
+                        " RESULTADO=" + (ok ? "OK" : "VERIFICAR"));
                 }
-                pursuer.setStatsDirty();
+                a.setStatsDirty();
             }
-            _temporaryTraits.Remove(pursuer);
+            _traitsAddedByMod.Remove(a);
         }
 
-        private void CleanupAllTemporaryTraits()
+        // Leitura defensiva do tipo real do Actor: nenhuma mudanca no asset.
+        private static string GetAssetId(Actor actor)
         {
-            var units = new List<Actor>(_temporaryTraits.Keys);
-            foreach (Actor actor in units)
-                CleanupTemporaryTraits(actor);
-        }
-
-        private static bool HasOppositeRisk(Actor actor)
-        {
-            foreach (string traitId in OppositeRiskTraits)
-                if (actor.hasTrait(traitId)) return true;
-            return false;
-        }
-
-        // Reservoir sampling entre candidatos proximos e nao reservados.
-        // Se nao houver criatura proxima, usa uma distante como fallback para nao
-        // quebrar o fluxo da versao 0.3.0; nesse caso a viagem pode falhar.
-        private Actor PickPursuer(List<Actor> alive, HashSet<Actor> haunted,
-                                  HashSet<Actor> reserved, Actor target)
-        {
-            Actor nearby = null;
-            Actor fallback = null;
-            int nearbyCount = 0;
-            int fallbackCount = 0;
-
-            foreach (Actor candidate in alive)
+            if (actor == null) return "";
+            try
             {
-                if (object.ReferenceEquals(candidate, target) ||
-                    haunted.Contains(candidate) || reserved.Contains(candidate) ||
-                    !HasUsableTile(candidate) || HasOppositeRisk(candidate))
-                    continue;
+                object asset = actor.getActorAsset();
+                if (asset == null) return "";
+                Type t = asset.GetType();
+                FieldInfo field = t.GetField("id", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (field != null) return Convert.ToString(field.GetValue(asset)) ?? "";
+                PropertyInfo property = t.GetProperty("id", BindingFlags.Public | BindingFlags.Instance);
+                if (property != null) return Convert.ToString(property.GetValue(asset, null)) ?? "";
+            }
+            catch { /* desconhecido -> nao seleciona */ }
+            return "";
+        }
 
-                float distance = candidate.distanceToActorTile(target);
-                if (distance < MinStartDistance)
-                    continue;
+        private static bool IsAllowedHost(Actor a, HashSet<Actor> haunted, Actor except)
+        {
+            if (!Usable(a) || object.ReferenceEquals(a, except) || haunted.Contains(a))
+                return false;
+            foreach (string t in OppositeRiskTraits)
+                if (a.hasTrait(t)) return false;
+            return AllowedHostAssets.Contains(GetAssetId(a));
+        }
 
-                fallbackCount++;
-                if (_random.Next(fallbackCount) == 0)
-                    fallback = candidate;
-
-                if (distance <= PreferredMaxDistance)
+        // Reservoir sampling sem alocar todas as criaturas candidatas.
+        private Actor PickHost(List<Actor> alive, HashSet<Actor> haunted, Actor target, Actor around)
+        {
+            Actor near = null;
+            Actor fallback = null;
+            int nearCount = 0;
+            int fallbackCount = 0;
+            foreach (Actor a in alive)
+            {
+                if (!IsAllowedHost(a, haunted, around)) continue;
+                float d = a.distanceToActorTile(around ?? target);
+                if (around != null)
                 {
-                    nearbyCount++;
-                    if (_random.Next(nearbyCount) == 0)
-                        nearby = candidate;
+                    // Para mudanca de hospedeiro, escolher proximo ao antigo.
+                    if (d < MinHostHopDistance || d > MaxHostHopDistance) continue;
+                    nearCount++;
+                    if (_random.Next(nearCount) == 0) near = a;
+                }
+                else
+                {
+                    if (d < MinStartDistance) continue;
+                    fallbackCount++;
+                    if (_random.Next(fallbackCount) == 0) fallback = a;
+                    if (d <= PreferMaxDistance)
+                    {
+                        nearCount++;
+                        if (_random.Next(nearCount) == 0) near = a;
+                    }
                 }
             }
+            return near ?? fallback;
+        }
 
-            return nearby ?? fallback;
+        private void SetHost(Actor next, bool isChange)
+        {
+            if (!Usable(next)) return;
+            Actor old = _host;
+            string oldSpecies = GetAssetId(old);
+            if (old != null && !object.ReferenceEquals(old, next))
+            {
+                CleanupTemporaryTraits(old);
+                // Nao matamos o antigo hospedeiro. Ele apenas deixa de ser a entidade.
+                if (Usable(old)) old.cancelAllBeh();
+            }
+            _host = next;
+            _host.cancelAllBeh();
+            ApplyTemporaryTraits(_host);
+            _nextHostChangeTime = Time.unscaledTime + (isChange ? HostChangeInterval : FirstHostChangeAfter);
+            _lastProgressTime = Time.unscaledTime;
+            _lastDistance = _target != null ? _host.distanceToActorTile(_target) : 0f;
+            LogInfo("THE UNRELENTING: " + (isChange ? "ENTIDADE TROCOU DE HOSPEDEIRO!" : "ENTIDADE DESPERTOU!") +
+                " ANTERIOR_TEMP_ID=" + (old == null ? "NENHUM" : old.GetHashCode().ToString()) +
+                " NOVO_TEMP_ID=" + next.GetHashCode() +
+                " FORMA_ANTERIOR=" + oldSpecies + " NOVA_FORMA=" + GetAssetId(next) +
+                " ALVO_TEMP_ID=" + (_target == null ? "NENHUM" : _target.GetHashCode().ToString()));
+        }
+
+        private void EndEntity(string reason, bool vanish)
+        {
+            if (_host != null)
+            {
+                Actor old = _host;
+                CleanupTemporaryTraits(old);
+                if (vanish && Usable(old))
+                {
+                    // Como o host pertence a entidade neste momento, ele desaparece.
+                    old.dieSimpleNone();
+                }
+                LogInfo("THE UNRELENTING: ENTIDADE ENCERRADA! MOTIVO=" + reason +
+                    " ULTIMO_HOSPEDEIRO_TEMP_ID=" + old.GetHashCode() +
+                    " DESAPARECEU=" + (vanish && !old.isAlive()) +
+                    " EXECUCOES=" + _killsThisChain);
+            }
+            _host = null;
+            _target = null;
+            _killsThisChain = 0;
+            _warnedNoHost = false;
+        }
+
+        private void ResetForWorld()
+        {
+            // Se outro mundo foi carregado, nao chamar die() em objetos antigos.
+            foreach (Actor actor in new List<Actor>(_traitsAddedByMod.Keys))
+                CleanupTemporaryTraits(actor);
+            _traitsAddedByMod.Clear();
+            _knownHaunted.Clear();
+            _targetQueue.Clear();
+            _host = null;
+            _target = null;
+            _killsThisChain = 0;
+            _warnedNoHost = false;
+            _reportedError = false;
         }
 
         private void Update()
         {
             _scanClock += Time.unscaledDeltaTime;
-            if (_scanClock < ScanInterval)
-                return;
+            if (_scanClock < ScanInterval) return;
             _scanClock = 0f;
-
             if (World.world == null)
             {
-                ResetTracking();
+                ResetForWorld();
                 _activeWorldReference = null;
                 return;
             }
-
-            // Mesma protecao usada na v0.3.0 contra referencias de outro mundo.
             if (!object.ReferenceEquals(_activeWorldReference, World.world))
             {
-                ResetTracking();
+                ResetForWorld();
                 _activeWorldReference = World.world;
             }
 
             try
             {
-                HashSet<Actor> current = new HashSet<Actor>();
                 List<Actor> alive = new List<Actor>();
+                HashSet<Actor> current = new HashSet<Actor>();
                 foreach (Actor actor in World.world.units)
                 {
-                    if (!HasUsableTile(actor))
-                        continue;
-
+                    if (!Usable(actor)) continue;
                     alive.Add(actor);
-                    if (actor.hasTrait(TraitId))
+                    if (actor.hasTrait(TraitId)) current.Add(actor);
+                }
+
+                // A fila respeita a ordem de descoberta; nao abre novos perseguidores.
+                foreach (Actor actor in alive)
+                {
+                    if (!current.Contains(actor) || _knownHaunted.Contains(actor)) continue;
+                    _targetQueue.Add(actor);
+                    LogInfo("THE UNRELENTING: HAUNTED ENTROU NA FILA! ALVO_TEMP_ID=" +
+                        actor.GetHashCode() + " FILA=" + _targetQueue.Count);
+                }
+                foreach (Actor old in _knownHaunted)
+                {
+                    if (current.Contains(old)) continue;
+                    _targetQueue.Remove(old);
+                    string reason = !old.isAlive() ? "MORTE_OU_DESAPARECIMENTO" :
+                        (old.current_tile == null ? "SEM_TILE" : "TRAIT_REMOVIDA");
+                    LogInfo("THE UNRELENTING: HAUNTED SAIU DA FILA! ALVO_TEMP_ID=" +
+                        old.GetHashCode() + " MOTIVO=" + reason);
+                }
+                _knownHaunted.Clear();
+                foreach (Actor a in current) _knownHaunted.Add(a);
+
+                // Alvo atual sempre e a primeira vitima ainda ativa na fila.
+                Actor nextTarget = _targetQueue.Count == 0 ? null : _targetQueue[0];
+                if (!object.ReferenceEquals(nextTarget, _target))
+                {
+                    Actor prev = _target;
+                    _target = nextTarget;
+                    if (_target != null)
                     {
-                        current.Add(actor);
-                        if (!_hauntedUnits.Contains(actor))
-                            LogInfo("THE UNRELENTING: HAUNTED DETECTADO! TEMP_ID=" + actor.GetHashCode());
+                        LogInfo("THE UNRELENTING: ALVO DEFINIDO! ANTERIOR_TEMP_ID=" +
+                            (prev == null ? "NENHUM" : prev.GetHashCode().ToString()) +
+                            " NOVO_TEMP_ID=" + _target.GetHashCode() +
+                            " HAUNTED_RESTANTES=" + _targetQueue.Count);
                     }
                 }
 
-                foreach (Actor previous in _hauntedUnits)
+                if (_target == null)
                 {
-                    if (!current.Contains(previous))
+                    if (_host != null) EndEntity("SEM_VITIMAS", true);
+                    return;
+                }
+
+                // Evitar usar a propria vitima como corpo da entidade.
+                if (_host != null && current.Contains(_host))
+                {
+                    LogWarning("THE UNRELENTING: HOSPEDEIRO RECEBEU HAUNTED; SOLTANDO CORPO.");
+                    EndEntity("HOSPEDEIRO_MARCADO", false);
+                    _target = _targetQueue[0];
+                }
+                if (!Usable(_host))
+                {
+                    if (_host != null)
+                        LogWarning("THE UNRELENTING: HOSPEDEIRO MORREU; ENTIDADE PROCURA OUTRO CORPO.");
+                    _host = null;
+                    Actor chosen = PickHost(alive, current, _target, null);
+                    if (chosen == null)
                     {
-                        string reason = !previous.isAlive() ? "MORTE_OU_DESAPARECIMENTO" :
-                            (previous.current_tile == null ? "SEM_TILE" :
-                             (!previous.hasTrait(TraitId) ? "TRAIT_REMOVIDA" : "FORA_DA_LISTA"));
-                        LogInfo("THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=" +
-                                previous.GetHashCode() + " MOTIVO=" + reason);
-                        ForgetTarget(previous);
+                        if (!_warnedNoHost)
+                            LogWarning("THE UNRELENTING: SEM HOSPEDEIRO COMPATIVEL. Crie humanos, ovelhas ou vacas.");
+                        _warnedNoHost = true;
+                        return;
                     }
+                    _warnedNoHost = false;
+                    SetHost(chosen, false);
                 }
 
-                // Desativa vinculos invalidos, sem tocar em unidades mortas.
-                List<Actor> invalid = new List<Actor>();
-                foreach (KeyValuePair<Actor, Actor> pair in _pursuerByTarget)
+                if (EnableHostHopping && Time.unscaledTime >= _nextHostChangeTime)
                 {
-                    if (!current.Contains(pair.Key) || !HasUsableTile(pair.Value) ||
-                        current.Contains(pair.Value))
-                        invalid.Add(pair.Key);
-                }
-                foreach (Actor target in invalid)
-                {
-                    if (current.Contains(target))
-                        LogInfo("THE UNRELENTING: PERSEGUIDOR INDISPONIVEL; NOVA ESCOLHA NECESSARIA. ALVO_TEMP_ID=" + target.GetHashCode());
-                    ForgetTarget(target);
-                }
-
-                HashSet<Actor> reserved = new HashSet<Actor>(_pursuerByTarget.Values);
-                foreach (Actor target in current)
-                {
-                    if (_pursuerByTarget.ContainsKey(target))
-                        continue;
-
-                    Actor pursuer = PickPursuer(alive, current, reserved, target);
-                    if (pursuer == null)
-                    {
-                        if (_noCandidateNotice.Add(target))
-                            LogWarning("THE UNRELENTING: NENHUM PERSEGUIDOR DISPONIVEL PARA ALVO_TEMP_ID=" + target.GetHashCode());
-                        continue;
-                    }
-
-                    _noCandidateNotice.Remove(target);
-                    _pursuerByTarget[target] = pursuer;
-                    reserved.Add(pursuer);
-                    float distance = pursuer.distanceToActorTile(target);
-                    _lastLoggedDistance[target] = distance;
-                    _lastProgressTime[target] = Time.unscaledTime;
-
-                    LogInfo("THE UNRELENTING: PERSEGUIDOR ESCOLHIDO! ALVO_TEMP_ID=" +
-                            target.GetHashCode() + " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode() +
-                            " DISTANCIA_INICIAL=" + distance.ToString("F1"));
-
-                    // Uma unica vez ao escolher: a rotina original pode disputar
-                    // o movimento; o goTo sera renovado nas varreduras seguintes.
-                    pursuer.cancelAllBeh();
-                    ApplyTemporaryTraits(pursuer);
-                }
-
-                // Reenvia destino movel. Ao chegar a 1.5 tiles, elimina a vitima
-                // pelo ciclo de vida nativo (nao usa dano enorme, que poderia
-                // acertar terceiros). Depois remove o proprio perseguidor.
-                // ATENCAO: metodo destrutivo; usar somente em mundo descartavel.
-                List<Actor> completedTargets = new List<Actor>();
-                foreach (KeyValuePair<Actor, Actor> pair in _pursuerByTarget)
-                {
-                    Actor target = pair.Key;
-                    Actor pursuer = pair.Value;
-                    if (!current.Contains(target) || !HasUsableTile(target) ||
-                        !HasUsableTile(pursuer))
-                        continue;
-
-                    float distance = pursuer.distanceToActorTile(target);
-                    if (distance <= 1.5f)
-                    {
-                        // Guard contra chamadas repetidas enquanto o mesmo par
-                        // permanece ao alcance, inclusive no ciclo seguinte.
-                        if (_reachedTargets.Add(target))
-                        {
-                            int targetId = target.GetHashCode();
-                            int pursuerId = pursuer.GetHashCode();
-                            LogInfo("THE UNRELENTING: CONTATO COM A VITIMA! ALVO_TEMP_ID=" +
-                                    targetId + " PERSEGUIDOR_TEMP_ID=" + pursuerId);
-
-                            try
-                            {
-                                // Verificado para WorldBox 0.51.2 (build 719).
-                                target.dieSimpleNone();
-                                if (!target.isAlive())
-                                {
-                                    LogInfo("THE UNRELENTING: EXECUCAO CONFIRMADA! ALVO_TEMP_ID=" +
-                                            targetId + " PERSEGUIDOR_TEMP_ID=" + pursuerId);
-
-                                    // Sempre desfazer primeiro os modificadores
-                                    // adicionados pelo mod. A criatura de teste
-                                    // pode ser um habitante normal preexistente.
-                                    CleanupTemporaryTraits(pursuer);
-                                    try
-                                    {
-                                        if (pursuer.isAlive())
-                                            pursuer.dieSimpleNone();
-                                        LogInfo("THE UNRELENTING: PERSEGUIDOR ENCERRADO! PERSEGUIDOR_TEMP_ID=" +
-                                                pursuerId + " MORTO=" + (!pursuer.isAlive()));
-                                    }
-                                    catch (Exception pursuerError)
-                                    {
-                                        LogWarning("THE UNRELENTING: FALHA AO ENCERRAR PERSEGUIDOR_TEMP_ID=" +
-                                                   pursuerId + " ERRO=" + pursuerError);
-                                    }
-
-                                    completedTargets.Add(target);
-                                    continue; // Nao mandar novo goTo nem logar distancia de morto.
-                                }
-                                LogWarning("THE UNRELENTING: EXECUCAO SEM CONFIRMACAO! ALVO_TEMP_ID=" + targetId);
-                            }
-                            catch (Exception executionError)
-                            {
-                                LogWarning("THE UNRELENTING: FALHA NA EXECUCAO ALVO_TEMP_ID=" +
-                                           targetId + " ERRO=" + executionError);
-                            }
-                            // Permite novo teste em uma verificacao futura caso
-                            // a API tenha falhado, mantendo o mundo vivo.
-                            _reachedTargets.Remove(target);
-                        }
-                    }
+                    Actor newHost = PickHost(alive, current, _target, _host);
+                    if (newHost != null && !object.ReferenceEquals(newHost, _host))
+                        SetHost(newHost, true);
                     else
-                    {
-                        pursuer.goTo(target.current_tile, false);
-                    }
-
-                    float lastTime;
-                    _lastProgressTime.TryGetValue(target, out lastTime);
-                    if (Time.unscaledTime - lastTime >= ProgressLogInterval)
-                    {
-                        float previousDistance;
-                        if (!_lastLoggedDistance.TryGetValue(target, out previousDistance))
-                            previousDistance = distance;
-                        LogInfo("THE UNRELENTING: PROGRESSO PERSEGUICAO ALVO_TEMP_ID=" + target.GetHashCode() +
-                                " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode() +
-                                " DISTANCIA=" + distance.ToString("F1") +
-                                " DISTANCIA_ANTERIOR=" + previousDistance.ToString("F1"));
-                        _lastLoggedDistance[target] = distance;
-                        _lastProgressTime[target] = Time.unscaledTime;
-                    }
+                        _nextHostChangeTime = Time.unscaledTime + 10f;
                 }
 
-                // Adiar a remocao ate depois do foreach do Dictionary.
-                foreach (Actor completed in completedTargets)
+                if (!Usable(_target) || !Usable(_host)) return;
+                float distance = _host.distanceToActorTile(_target);
+                if (distance <= ContactDistance)
                 {
-                    ForgetTarget(completed);
-                    current.Remove(completed);
+                    int victimId = _target.GetHashCode();
+                    int hostId = _host.GetHashCode();
+                    LogInfo("THE UNRELENTING: CONTATO COM A VITIMA! ALVO_TEMP_ID=" + victimId +
+                        " HOSPEDEIRO_TEMP_ID=" + hostId);
+                    _target.dieSimpleNone();
+                    if (!_target.isAlive())
+                    {
+                        _killsThisChain++;
+                        LogInfo("THE UNRELENTING: EXECUCAO CONFIRMADA! ALVO_TEMP_ID=" + victimId +
+                            " HOSPEDEIRO_TEMP_ID=" + hostId + " TOTAL=" + _killsThisChain);
+                        _targetQueue.Remove(_target);
+                        _knownHaunted.Remove(_target);
+                        _target = _targetQueue.Count > 0 ? _targetQueue[0] : null;
+                        if (_target != null)
+                        {
+                            LogInfo("THE UNRELENTING: PROXIMA VITIMA! NOVO_ALVO_TEMP_ID=" +
+                                _target.GetHashCode() + " HOSPEDEIRO_TEMP_ID=" + hostId +
+                                " RESTANTES=" + _targetQueue.Count);
+                        }
+                        else
+                        {
+                            EndEntity("CADEIA_CONCLUIDA", true);
+                        }
+                        return;
+                    }
+                    LogWarning("THE UNRELENTING: EXECUCAO NAO CONFIRMADA! ALVO_TEMP_ID=" + victimId);
+                }
+                else
+                {
+                    _host.goTo(_target.current_tile, false);
                 }
 
-                _hauntedUnits = current;
-                _reportedScanError = false;
+                if (Time.unscaledTime - _lastProgressTime >= ProgressLogInterval)
+                {
+                    LogInfo("THE UNRELENTING: PROGRESSO CADEIA ALVO_TEMP_ID=" +
+                        _target.GetHashCode() + " HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode() +
+                        " DISTANCIA=" + distance.ToString("F1") +
+                        " DISTANCIA_ANTERIOR=" + _lastDistance.ToString("F1") +
+                        " RESTANTES=" + _targetQueue.Count);
+                    _lastDistance = distance;
+                    _lastProgressTime = Time.unscaledTime;
+                }
+                _reportedError = false;
             }
-            catch (Exception error)
+            catch (Exception e)
             {
-                if (!_reportedScanError)
+                if (!_reportedError)
                 {
-                    LogWarning("THE UNRELENTING: ERRO NA PERSEGUICAO: " + error);
-                    _reportedScanError = true;
+                    LogWarning("THE UNRELENTING: ERRO NA CADEIA DE PERSEGUICAO: " + e);
+                    _reportedError = true;
                 }
             }
         }

@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.6.0",
-  "description": "The Unrelenting v0.6.0: first lethal encounter and pursuer shutdown (test worlds only).",
+  "version": "0.7.0",
+  "description": "One supernatural pursuer, chained Haunted targets, experimental body-hopping across ordinary creatures (prototype)",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []

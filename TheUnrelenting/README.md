@@ -1,76 +1,44 @@
-# The Unrelenting v0.6.0 — First Contact (experimental)
+# The Unrelenting v0.7.0 — One Entity, Many Faces
 
-Mod para WorldBox **0.51.2 build 719**, usando NeoModLoader no Ubuntu.
+Prototype for WorldBox 0.51.2 build 719 / NeoModLoader.
 
-> **AVISO: TESTAR SOMENTE NUM MUNDO DESCARTAVEL.** Esta versao pode eliminar tanto
-> a vitima quanto uma criatura normal selecionada como perseguidor. Nao teste em
-> saves importantes. As traits nativas podem causar efeitos colaterais e sua
-> limpeza nao e garantida apos salvar/recarregar.
+## Current behavior
 
-## O que mudou desde a v0.5.0
+- The custom `Haunted` trait keeps its previous stable ID: `ArvakTheUnrelenting_Haunted`.
+- A **single entity** hunts one target at a time (queue of discovered Haunted creatures).
+- On kill, the same entity selects the next target; its current host remains alive until the queue ends.
+- Every ~22 s for the first hop and ~32 s later (real elapsed seconds) the entity attempts to **switch its possessed host** to a nearby eligible ordinary creature.
+- The old host is not killed and receives cleanup of the native traits added by the mod.
+- Eligible host IDs are limited to common civilized units and animals. Dragons, aliens, UFOs and most bosses are excluded.
+- The last host disappears after the final Haunted target is killed.
 
-- Preserva a trait `Haunted` e ID `ArvakTheUnrelenting_Haunted`.
-- Preserva a escolha secreta de um perseguidor existente e a perseguicao via `goTo`.
-- Aplica temporariamente `slow`, `peaceful`, `immortal` e `super_health` quando faltantes.
-- Quando o perseguidor chega a **1.5 tiles** do alvo, chama `Actor.dieSimpleNone()`
-  para a vitima (execucao direta sem dano em area).
-- Confirma no log se a vitima morreu. Somente se isso for confirmado, limpa
-  traits do perseguidor, remove-o com `dieSimpleNone()` e encerra o vinculo.
-- Evita executar o mesmo vinculo repetidamente e nao continua emitindo
-  ordens de movimento a um alvo executado.
-- Ainda identifica unidades apenas durante a sessao atual: **sem persistencia de
-  associacoes apos reiniciar ou recarregar save**.
+**Important:** this version uses **body-hopping**, not true actor-species/sprite mutation. A sheep becomes the *new* host; the previous human is released. The same actor does not turn into a sheep. This is a deliberately safer prototype while cross-species visual transformation remains unverified on WorldBox 0.51.2.
 
-## O que AINDA nao esta pronto
+## Test
 
-- `Peaceful` nao impede que outros ataquem o perseguidor: neutralidade total
-  ainda NAO foi implementada.
-- `Immortal` nao evita ataques, e `super_health` nao garante invulnerabilidade.
-- Traits do perseguidor ficam visiveis na ficha: o disfarce NAO e perfeito.
-- Travessia de oceanos, estabilidade sob pause/reload, obstaculos e selecao de
-  candidatos do mesmo continente ainda nao foram resolvidos.
-- O perseguidor pode ser uma unidade comum e sua morte pode afetar o mundo.
-
-## Instalacao
-
-1. Feche o WorldBox.
-2. Na pasta `worldbox/Mods/`, remova apenas a pasta antiga `TheUnrelenting`.
-3. Extraia o ZIP e mova sua pasta `TheUnrelenting` para `worldbox/Mods/`.
-4. Abra WorldBox e CRIE UM MUNDO NOVO DESCARTAVEL.
-
-## Teste controlado
-
-1. Crie uma ilha conectada com de 10 a 20 unidades comuns.
-2. Aplique a trait `Haunted` a apenas uma criatura.
-3. Deixe o mundo rodar e observe as duas unidades se aproximando.
-4. Quando o perseguidor encostar, verifique se a vitima e o perseguidor
-   desapareceram/morreram. **Nao salve esse mundo.**
-5. Rode no Ubuntu:
+1. Close WorldBox. Replace the old `TheUnrelenting` directory with the one in this ZIP in the working NML `Mods` path.
+2. Use **only a disposable world**; this mod eliminates units.
+3. Spawn at least 15 ordinary units including humans, sheep, cows, and/or other eligible species on one large island.
+4. Add Haunted to 2-3 separate units; do not give Haunted to the entity host.
+5. Confirm the log has `HAUNTED ENTROU NA FILA`, `ENTIDADE DESPERTOU`, `EXECUCAO CONFIRMADA`, `PROXIMA VITIMA`, `ENTIDADE TROCOU DE HOSPEDEIRO`, and finally `ENTIDADE ENCERRADA`.
+6. If the pursuit finishes too fast to see a host change, place targets farther away, or adjust `FirstHostChangeAfter` and `HostChangeInterval` in `Main.cs` (seconds).
 
 ```bash
-grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' \
-  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 120
+grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
 ```
 
-Esperado em caso de sucesso:
+## Known limitations
 
-```
-THE UNRELENTING: CONTATO COM A VITIMA!
-THE UNRELENTING: EXECUCAO CONFIRMADA!
-THE UNRELENTING: PERSEGUIDOR ENCERRADO! ... MORTO=True
-```
+- AI neutrality and true invulnerability are not solved; Peaceful, Immortal and Super Health are provisional native traits.
+- Host bodies can be identified through abnormal native traits in their info panel.
+- Hosts can die or be attacked normally by the game. The entity will try to reselect one.
+- Swimming, oceans, island transitions, saving/loading active chains and the interactions of body switching with the third-person camera mod have not been validated.
+- Hopping uses nearby existing creatures and restores only native traits that the mod itself added. Worlds saved while a host is possessed can retain temporary modifications.
+- The old actor's normal AI may not instantly resume after body release; this needs testing.
+- No magical visual transformation or real-time sprite swap is performed.
 
-Se ocorrer `FALHA NA EXECUCAO`, `EXECUCAO SEM CONFIRMACAO` ou
-`FALHA AO ENCERRAR PERSEGUIDOR`, envie o log.
+## GitHub
 
-## Atualizacao do GitHub
-
-- Substituir `Main.cs`, `mod.json`, `README.md`, `LEIA-ME.txt` e `Locales/`.
-- Commit: `feat: add lethal Haunted encounter and pursuer cleanup`
-- Versao: `v0.6.0` (experimental; release somente apos teste).
-
-## Fontes e compatibilidade
-
-- https://lous12.github.io/worldbox-modding-docs/api/runtime-entity-lifecycle/
-- https://lous12.github.io/worldbox-modding-docs/api/runtime-actor/
-- https://github.com/WorldBoxOpenMods/ModLoader
+Replace existing project files with those in this ZIP (including `Locales`).
+Suggested commit: `feat: chain Haunted victims with a single body-hopping pursuer`
+Tag / version: `v0.7.0` after validation.
