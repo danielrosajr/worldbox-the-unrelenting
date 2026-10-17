@@ -1,3 +1,4 @@
-The Unrelenting v0.3.0
-Instalacao, testes e GitHub: leia README.md
-Esta versao SOMENTE SELECIONA perseguidores; nao persegue nem mata.
+The Unrelenting v0.4.0 (TESTE DE PERSEGUICAO)
+Instalacao, teste e GitHub: leia README.md
+A v0.3.0 foi validada em jogo; a v0.4.0 ainda NAO foi testada.
+NAO mata ninguem. Apenas tenta fazer o perseguidor se aproximar da vitima.

@@ -1,53 +1,54 @@
-# The Unrelenting — v0.3.0 (escolha secreta do perseguidor)
+# The Unrelenting v0.4.0 — The Pursuit (experimental)
 
-Mod experimental de terror para **WorldBox 0.51.2 (build 719)** com **NeoModLoader**, no Ubuntu.
-A v0.2.0 (detector Haunted) foi **validada em jogo pelo autor**.
-**A v0.3.0 precisa ser testada no seu WorldBox.**
+Mod experimental de terror para **WorldBox 0.51.2 build 719** e **NeoModLoader** no Ubuntu.
 
-## Novidades da v0.3.0
+A v0.3.0 foi confirmada no jogo pelo autor. **A v0.4.0 ainda precisa ser testada no WorldBox.**
 
-- Mantem o GUID `Arvak.TheUnrelenting` e a trait `ArvakTheUnrelenting_Haunted` (sem mudar saves anteriores).
-- Preserva o detector da v0.2.0: identifica quando Haunted aparece/desaparece a cada ~2 segundos reais.
-- Para cada unidade Haunted, sorteia **uma unidade viva ja existente** no mundo, sem Haunted e que nao esteja reservada para outra vitima.
-- Registra no log `ALVO_TEMP_ID` e `PERSEGUIDOR_TEMP_ID` para validacao.
-- Se o alvo perder Haunted, o vinculo de perseguidor e descartado; se o perseguidor morrer ou ganhar Haunted, outro pode ser sorteado.
-- Trocar de mundo limpa os vinculos mantidos em memoria.
-- **Nao** altera IA, aparencia, traits, velocidade, resistencia ou dano. O perseguidor **ainda nao persegue nem mata**.
-- Sorteio considera todo o mundo; distancia/mesma ilha serao criterios futuros.
-- `TEMP_ID` usa `GetHashCode()` exclusivamente para diagnostico e NAO e persistente entre jogos/saves.
+## O que faz
 
-## Como instalar
+- Mantem trait `Haunted`, seu ID `ArvakTheUnrelenting_Haunted`, GUID e grupo da v0.3.0.
+- Identifica vitimas a cada ~2 segundos reais e atribui a cada uma um perseguidor aleatorio ja existente.
+- Prefere unidades a ate 55 tiles de distancia; se nao houver, considera criaturas mais distantes (que podem nao encontrar rota).
+- Ao escolher, cancela a rotina atual do perseguidor UMA vez e manda seguir a posicao atual da vitima por `goTo(target.current_tile, false)` a cada ~2 segundos.
+- Loga a distancia na selecao, progresso a cada ~15 segundos reais e quando o perseguidor se aproxima a ~1,5 tiles.
+- Se Haunted for removido ou o alvo desaparecer, interrompe as novas ordens de perseguicao.
+- Se o perseguidor morrer ou ficar Haunted, pode atribuir outro.
 
-1. Feche o WorldBox.
-2. No diretorio `Mods` do NeoModLoader, **substitua somente** a pasta antiga `TheUnrelenting` pela pasta `TheUnrelenting` deste ZIP.
-3. Abra o jogo e um mundo com varias criaturas vivas.
-4. Aplique a trait `Haunted` a uma ou duas criaturas diferentes. Aguarde ~2 segundos.
-5. Consulte o `Player.log`. Depois remova Haunted de uma delas e confira a mensagem de desativacao.
+**Ainda NAO ha**: execucao da vitima, imortalidade, neutralidade completa, lentidao, travessia segura de oceanos, persistencia de pares entre saves, garantia de monopolizar a IA normal. O movimento e experimental; mares e obstaculos podem impedir o trajeto.
+
+## Instalacao
+
+1. Feche WorldBox.
+2. Remova a pasta antiga `TheUnrelenting` de `worldbox/Mods` (apenas essa pasta).
+3. Extraia este ZIP e coloque a nova pasta `TheUnrelenting` no mesmo lugar.
+4. Abra WorldBox e confirme The Unrelenting no menu NML.
+
+## Teste controlado
+
+1. Crie um mapa com terra continua e 10-20 criaturas em uma area relativamente pequena (reduz falhas de caminho).
+2. Aplique `Haunted` em 1 criatura.
+3. Deixe o jogo rodando durante 30-60 segundos reais.
+4. Execute:
 
 ```bash
 grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' \
-  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 50
+  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 80
 ```
 
-### Logs esperados (exemplo)
+As mensagens `PERSEGUIDOR ESCOLHIDO`, `PROGRESSO PERSEGUICAO` e possivelmente `PERSEGUIDOR ALCANCOU O ALVO (SEM MATAR)` indicam progresso.
 
-```
-THE UNRELENTING: SELETOR DE PERSEGUIDORES ATIVO (verificacao a cada 2 segundos).
-THE UNRELENTING: HAUNTED DETECTADO! TEMP_ID=2322
-THE UNRELENTING: PERSEGUIDOR ESCOLHIDO! ALVO_TEMP_ID=2322 PERSEGUIDOR_TEMP_ID=4567
-THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=2322
-```
+**Verificacao critica:** em `PROGRESSO PERSEGUICAO` veja se `DISTANCIA` ficou MENOR que `DISTANCIA_ANTERIOR`. O fato de `goTo` ter sido invocado nao garante deslocamento bem sucedido. Veja tambem se o mundo esta pausado e se o jogo nao esta aguardando loading.
 
-**Dica:** com uma unica criatura no mapa e Haunted nela, o log avisara que nao existem perseguidores disponiveis. Adicione mais criaturas para testar.
+Se um erro ocorrer, envie o arquivo de erro do NeoModLoader ou as ultimas 80 linhas relevantes do Player.log.
 
 ## GitHub
 
-- Substituir `Main.cs`, `mod.json`, `README.md`, `LEIA-ME.txt` e os arquivos `Locales/*.json` existentes. Nao excluir o historico nem trocar GUID/ID da trait.
-- Commit: `feat: assign hidden pursuers to Haunted units`
-- Versao: `v0.3.0`.
-- Release: publique so depois de validar em jogo.
+- Substituir `Main.cs`, `mod.json`, `README.md`, `LEIA-ME.txt` e `Locales/*.json` pelos arquivos deste ZIP.
+- Commit: `feat: add experimental Haunted pursuer movement`
+- Versao: `v0.4.0` (release so apos teste bem-sucedido).
 
-## Referencias
+## Fontes e referencia da API
 
-- https://github.com/WorldBoxOpenMods/ModExample
-- https://github.com/WorldBoxOpenMods/ModLoaderPullRequests/blob/master/api/BasicMod.cs
+- https://github.com/studiocadogan/SemiAutoActions/blob/main/SemiAutoActionSystem.cs (`Actor.goTo(WorldTile, false)` e `cancelAllBeh()`)
+- https://lous12.github.io/worldbox-modding-docs/quick/actors/ (`distanceToActorTile`)
+- https://github.com/WorldBoxOpenMods/ModLoader
