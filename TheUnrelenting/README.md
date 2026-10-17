@@ -206,3 +206,18 @@ grep -nE 'WORLDFALL PROBE V2|WORLDFALL CLASSES|WORLDFALL CONTROLE|CONTROLE NAO C
 Only positive exact Actor reference + active possession-state evidence allows the effect. A `CONTROLE_COMPROVADO=False` is still possible, since the third-party interface is undocumented. If it happens, share the `PROBE V2` and `CLASSES` logs. Do not enable jumpscare until the detection matches correctly. Other systems from v0.13.1 are unchanged.
 
 **GitHub:** `fix: prioritize Worldfall control classes and improve possession diagnostics`
+
+
+## v0.13.3 — WorldPace Bridge
+
+The v0.13.2 logs revealed `WorldPace._possessed:Actor` inside Worldfall. This update reads that **specific field** via read-only reflection. It supports static fields, singleton instances, and live Unity components. If the field is readable, its actor reference is authoritative; unrelated active flags cannot override it. When this internal field is unavailable, the v0.13.2 conservative fallback remains.
+
+In NML > Immersion, enable `VerboseImmersionLogs` and `EnablePresenceCue`, but leave `EnableDeathJumpscare` disabled until you verify that `WORLDPACE_ATOR_TEMP_ID` becomes your Haunted creature's ID when you press **G** and becomes `NENHUM` (or no longer equals your target) when you release possession. In a disposable world, use:
+
+```bash
+grep -nE 'WORLDFALL PROBE V3|WORLDFALL CONTROLE COMPROVADO|CONTROLE NAO COMPROVADO|error CS|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 100
+```
+
+The fullscreen visual jumpscare and its sound remain opt-in. Game tests of this Worldfall version are still required. If WorldPace does not clear its `_possessed` field on release, DO NOT enable Death Jumpscare; send the V3 logs to adapt the bridge.
+
+Commit: `fix: detect Worldfall possession through WorldPace actor reference`

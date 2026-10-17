@@ -38,3 +38,13 @@ v0.13.2 WORLDFALL BRIDGE V2:
 - Novo diagnostico PROBE V2 e CLASSES; logs so em modo verbose, atualizados a cada ~30s reais.
 - Nao ativa sustos nem sons sem confirmar ator exato e modo ativo.
 - Commit: fix: prioritize Worldfall control classes and improve possession diagnostics
+
+
+NOVO NA V0.13.3 - WORLDPACE BRIDGE
+O log da v0.13.2 confirmou WorldPace._possessed:Actor.
+O mod agora le esse campo somente por reflexao, sem modificar o Worldfall.
+Teste primeiro com VerboseImmersionLogs ligado, EnablePresenceCue ligado e DeathJumpscare desligado.
+Aperte G para controlar Haunted. Confira WORLDPACE_ATOR_TEMP_ID e CONTROLE_COMPROVADO.
+Solte G, espere o proximo diagnostico e confirme que a referencia deixa de apontar para o alvo.
+So depois teste o jumpscare opcional, sempre em mundo descartavel e volume baixo.
+Commit: fix: detect Worldfall possession through WorldPace actor reference

@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.13.2 - Worldfall Bridge diagnostics (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
+    // v0.13.3 - WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -989,58 +989,170 @@ namespace Arvak.TheUnrelenting
             return type.Name + "[" + string.Join(",", names.ToArray()) + "]";
         }
 
+        // Worldfall v0.13.3 bridge: the user's runtime probe exposed the precise
+        // WorldPace._possessed:Actor field. A non-null reference in this field is
+        // significantly stronger evidence of active possession than unrelated
+        // flags scattered across the assembly. It is NOT a selected/hovered unit.
+        // Read-only reflection; Worldfall has no documented public controller API.
+        // On builds where the field does not exist, keep the conservative V2 probe.
+        private bool TryWorldPacePossession(out bool readable, out Actor possessed,
+                                             out bool ambiguous, out string source)
+        {
+            readable = false;
+            possessed = null;
+            ambiguous = false;
+            source = "NAO_ENCONTRADO";
+            foreach (Type type in _worldfallCandidateTypes)
+            {
+                if (type == null || type.Name != "WorldPace") continue;
+                FieldInfo field;
+                try
+                {
+                    field = type.GetField("_possessed", BindingFlags.NonPublic |
+                        BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance);
+                }
+                catch { continue; }
+                if (field == null || !typeof(Actor).IsAssignableFrom(field.FieldType)) continue;
+                if (field.IsStatic)
+                {
+                    try
+                    {
+                        possessed = field.GetValue(null) as Actor;
+                        readable = true;
+                        source = "WorldPace._possessed:STATIC";
+                    }
+                    catch { source = "WORLDPACE_STATIC_LEITURA_FALHOU"; }
+                    return true;
+                }
+                // Some Worldfall builds can keep WorldPace in a singleton; others
+                // may use a MonoBehaviour. Read only LIVE instances in the scene.
+                var owners = new List<object>();
+                foreach (string key in WorldfallSingletonKeys)
+                {
+                    object owner = Member(null, type, key, true);
+                    if (owner == null || !type.IsInstanceOfType(owner)) continue;
+                    bool already = false;
+                    foreach (object previous in owners)
+                        if (object.ReferenceEquals(previous, owner)) { already = true; break; }
+                    if (!already) owners.Add(owner);
+                }
+                if (typeof(UnityEngine.Object).IsAssignableFrom(type))
+                {
+                    try
+                    {
+                        UnityEngine.Object[] sceneInstances = UnityEngine.Object.FindObjectsOfType(type);
+                        if (sceneInstances != null) foreach (UnityEngine.Object instance in sceneInstances)
+                        {
+                            if (instance == null) continue;
+                            bool already = false;
+                            foreach (object previous in owners)
+                                if (object.ReferenceEquals(previous, instance)) { already = true; break; }
+                            if (!already) owners.Add(instance);
+                        }
+                    }
+                    catch { }
+                }
+                foreach (object owner in owners)
+                {
+                    try
+                    {
+                        Actor candidate = field.GetValue(owner) as Actor;
+                        readable = true;
+                        source = "WorldPace._possessed:INSTANCE(" + owners.Count + ")";
+                        if (candidate == null) continue;
+                        if (possessed != null && !object.ReferenceEquals(possessed, candidate))
+                        {
+                            ambiguous = true;
+                            possessed = null;
+                            source = "WORLDPACE_MULTIPLOS_ATORES";
+                            return true;
+                        }
+                        possessed = candidate;
+                    }
+                    catch { }
+                }
+                if (owners.Count == 0) source = "WORLDPACE_SEM_INSTANCIA";
+                return true;
+            }
+            return false;
+        }
+
         private bool WorldfallPlayerIs(Actor victim, out bool worldfallLoaded)
         {
             BuildWorldfallCandidateCache();
             worldfallLoaded = _worldfallAssemblyFound;
-            bool matched = false;
-            int activeTypes = 0;
-            int actorMatchedTypes = 0;
-            foreach (Type type in _worldfallCandidateTypes)
+            bool worldPaceReadable;
+            Actor worldPaceActor;
+            bool worldPaceAmbiguous;
+            string worldPaceSource;
+            bool worldPaceClassFound = TryWorldPacePossession(
+                out worldPaceReadable, out worldPaceActor, out worldPaceAmbiguous,
+                out worldPaceSource);
+            bool worldPaceExact = worldPaceReadable && !worldPaceAmbiguous &&
+                ExactActor(worldPaceActor, victim);
+            bool matched = worldPaceExact;
+            int activeTypes = worldPaceActor == null ? 0 : 1;
+            int actorMatchedTypes = worldPaceExact ? 1 : 0;
+            // A readable WorldPace._possessed takes precedence over other signals.
+            // If it points to another actor (or null), never let a generic flag
+            // override this explicit evidence and show a jumpscare incorrectly.
+            if (!worldPaceReadable && !worldPaceAmbiguous)
             {
-                bool active = WorldfallActive(null, type, true);
-                bool actorMatched = WorldfallActorMatch(null, type, true, victim);
-                if (active) activeTypes++;
-                if (actorMatched) actorMatchedTypes++;
-                if (active && actorMatched) matched = true;
-                foreach (string singletonName in WorldfallSingletonKeys)
+                foreach (Type type in _worldfallCandidateTypes)
                 {
-                    object singleton = Member(null, type, singletonName, true);
-                    if (singleton == null || singleton is Actor) continue;
-                    bool singletonActive = active || WorldfallActive(singleton, singleton.GetType(), false);
-                    bool singletonActorMatched = WorldfallActorMatch(singleton, singleton.GetType(), false, victim);
-                    if (singletonActive) activeTypes++;
-                    if (singletonActorMatched) actorMatchedTypes++;
-                    if (singletonActive && singletonActorMatched) matched = true;
+                    bool active = WorldfallActive(null, type, true);
+                    bool actorMatched = WorldfallActorMatch(null, type, true, victim);
+                    if (active) activeTypes++;
+                    if (actorMatched) actorMatchedTypes++;
+                    if (active && actorMatched) matched = true;
+                    foreach (string singletonName in WorldfallSingletonKeys)
+                    {
+                        object singleton = Member(null, type, singletonName, true);
+                        if (singleton == null || singleton is Actor) continue;
+                        bool singletonActive = active || WorldfallActive(singleton, singleton.GetType(), false);
+                        bool singletonActorMatched = WorldfallActorMatch(singleton, singleton.GetType(), false, victim);
+                        if (singletonActive) activeTypes++;
+                        if (singletonActorMatched) actorMatchedTypes++;
+                        if (singletonActive && singletonActorMatched) matched = true;
+                    }
+                    if (matched) break;
                 }
-                if (matched) break;
             }
             if (_immersion.Verbose && Time.unscaledTime >= _nextWorldfallProbeLog)
             {
                 _nextWorldfallProbeLog = Time.unscaledTime + 30f;
-                LogInfo("THE UNRELENTING: IMMERSION WORLDFALL PROBE V2! " +
+                LogInfo("THE UNRELENTING: IMMERSION WORLDFALL PROBE V3! " +
                     "DLL_ENCONTRADA=" + worldfallLoaded +
                     " TIPOS_NA_DLL=" + _worldfallTotalTypes +
                     " CLASSES_CANDIDATAS=" + _worldfallDiscoveredCandidates +
                     " INSPECIONADAS=" + _worldfallCandidateTypes.Count +
+                    " WORLDPACE_ENCONTRADA=" + worldPaceClassFound +
+                    " WORLDPACE_LIDO=" + worldPaceReadable +
+                    " WORLDPACE_FONTE=" + worldPaceSource +
+                    " WORLDPACE_ATOR_TEMP_ID=" + (worldPaceActor == null ? "NENHUM" : worldPaceActor.GetHashCode().ToString()) +
+                    " ALVO_TEMP_ID=" + victim.GetHashCode() +
+                    " WORLDPACE_EXATO=" + worldPaceExact +
+                    " WORLDPACE_AMBIGUO=" + worldPaceAmbiguous +
                     " ATOR_ENCONTRADO=" + (actorMatchedTypes > 0) +
                     " MODO_ATIVO_ENCONTRADO=" + (activeTypes > 0) +
                     " CONTROLE_COMPROVADO=" + matched);
-                // Names and declared types only; never dump game objects or actor values.
-                for (int i = 0; i < _worldfallCandidateTypes.Count && i < 24; i += 6)
+                if (!worldPaceReadable)
                 {
-                    var entries = new List<string>();
-                    for (int j = i; j < _worldfallCandidateTypes.Count && j < i + 6; j++)
-                        entries.Add(WorldfallMemberSummary(_worldfallCandidateTypes[j]));
-                    LogInfo("THE UNRELENTING: IMMERSION WORLDFALL CLASSES " + (i + 1) + "-" +
-                        (i + entries.Count) + "! " + string.Join(";", entries.ToArray()));
+                    for (int i = 0; i < _worldfallCandidateTypes.Count && i < 18; i += 6)
+                    {
+                        var entries = new List<string>();
+                        for (int j = i; j < _worldfallCandidateTypes.Count && j < i + 6; j++)
+                            entries.Add(WorldfallMemberSummary(_worldfallCandidateTypes[j]));
+                        LogInfo("THE UNRELENTING: IMMERSION WORLDFALL CLASSES " + (i + 1) + "-" +
+                            (i + entries.Count) + "! " + string.Join(";", entries.ToArray()));
+                    }
                 }
             }
             if (matched && !_worldfallConfirmationLogged)
             {
                 _worldfallConfirmationLogged = true;
                 LogInfo("THE UNRELENTING: IMMERSION WORLDFALL CONTROLE COMPROVADO! ATOR_TEMP_ID=" +
-                    victim.GetHashCode() + " (REFERENCIA_EXATA_E_MODO_ATIVO).");
+                    victim.GetHashCode() + " FONTE=" + (worldPaceExact ? "WORLDPACE._possessed" : "V2_FLAGS") + ".");
             }
             if (!matched) _worldfallConfirmationLogged = false;
             return matched;
@@ -1276,9 +1388,9 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.13.2 WORLDFALL BRIDGE + IMMERSION + BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.13.3 WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
-            LogInfo("THE UNRELENTING: IMMERSION: Worldfall Bridge experimental; requer ator exato E estado de possessao ativo; uso diagnostico no VerboseImmersionLogs.");
+            LogInfo("THE UNRELENTING: IMMERSION: WorldPace Bridge experimental; controle exato via _possessed:Actor e diagnosticos via VerboseImmersionLogs.");
             LoadImmersionArt();
             LogInfo("THE UNRELENTING: ANTI-KITE PREPARADO! BONUS_SPEED=" + PunishingRushSpeedBonus.ToString("F0") +
                 " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s; CONFIGURAVEL NO NML.");
