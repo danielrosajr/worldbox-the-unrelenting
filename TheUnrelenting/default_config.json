@@ -6,6 +6,11 @@
       "BoolVal": false
     },
     {
+      "Id": "RepeatAutomaticOrigins",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
       "Id": "ChancePerAttemptPercent",
       "Type": "SLIDER",
       "FloatVal": 1.0,

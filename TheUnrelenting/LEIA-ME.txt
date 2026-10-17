@@ -1,4 +1,4 @@
-THE UNRELENTING v0.10.1 - ORIGINS (WorldBox 0.51.2 / NML)
+THE UNRELENTING v0.10.2 - ORIGINS (WorldBox 0.51.2 / NML)
 
 1. Feche o jogo e substitua a pasta antiga TheUnrelenting pela nova.
 2. Certifique-se de copiar tambem o NOVO default_config.json.
@@ -18,3 +18,9 @@ Commit: feat: add opt-in rare Haunted origins and NML settings panel
 
 Correcoes: descricoes das quatro opcoes da tela Origins.
 Commit: fix: add missing Origins configuration descriptions
+
+V0.10.2: corrigida a origem automatica unica por mundo; agora ha opcao para repeticao.
+Para testar no NML: ative Origens aleatorias, Repetir origens e Teste rapido, crie humanos e mantenha a simulacao ativa. Apos a primeira execucao e o fim da cadeia, aguarde pelo menos outros 10 segundos reais para outra origem.
+O modo normal nao e garantido: 10% a cada 30 segundos reais pode resultar em varias tentativas sem eventos.
+Logs: ORIGINS TENTATIVA!, ORIGINS HAUNTED GERADA!, ORIGINS SORTEIO SEM EVENTO!, ORIGINS SEM ELEGIVEIS!
+Commit: fix: allow recurring Haunted origins and improve origin diagnostics

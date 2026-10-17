@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.10.1 - Origins localization fix: geracao rara, mundial e opcional da trait Haunted.
+    // v0.10.2 - Origins recorrentes: repeticao configuravel e logs de tentativas.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -58,11 +58,13 @@ namespace Arvak.TheUnrelenting
         // podem se opor: aplicá-las poderia apagar uma trait que nao e do mod.
         private static readonly string[] OppositeRiskTraits = { "slow", "fast", "agile", "plague" };
 
-        // Origins: somente uma nova maldicao automatica por mundo/sessao.
-        // Quando desativado, Haunted continua aplicavel pelo jogador normalmente.
+        // Origins: por padrao, nenhuma geracao automatica ate o usuario ativar.
+        // Quando ativo e com repeticao, agenda outra origem somente DEPOIS
+        // que a cadeia anterior terminar. Haunted manual funciona sempre.
         // A leitura dos valores vem do painel nativo do NeoModLoader.
         private const string OriginConfigGroup = "Origins";
         private const string CfgRandomEnabled = "EnableRandomOrigins";
+        private const string CfgRepeat = "RepeatAutomaticOrigins";
         private const string CfgTestMode = "TestMode";
         private const string CfgChance = "ChancePerAttemptPercent";
         private const string CfgInterval = "AttemptIntervalSeconds";
@@ -73,16 +75,23 @@ namespace Arvak.TheUnrelenting
         private struct OriginOptions
         {
             public bool Enabled;
+            public bool Repeat;
             public bool TestMode;
             public float Chance;
             public float Interval;
         }
 
         private bool _autoOriginDoneInWorld;
+        private int _autoOriginCountInWorld;
         private bool _originScheduled;
         private bool _lastOriginsEnabled;
+        private bool _lastOriginsRepeat;
         private bool _lastOriginsTestMode;
+        private float _lastOriginChance = -1f;
+        private float _lastOriginInterval = -1f;
         private float _nextOriginAttemptAt;
+        private float _nextNoEligibleWarningAt;
+        private bool _originLimitWarned;
         private bool _warnedOriginSettings;
 
         private readonly System.Random _random = new System.Random();
@@ -127,7 +136,7 @@ namespace Arvak.TheUnrelenting
                 needs_to_be_explored = false
             });
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.10.1 ORIGINS + CADEIA + VELOCIDADE + ARRANCADAS ATIVAS.");
+            LogInfo("THE UNRELENTING: V0.10.2 ORIGINS RECORRENTES + CADEIA + VELOCIDADE + ARRANCADAS ATIVAS.");
             LogInfo("THE UNRELENTING: ORIGINS: menu do NML > Mods > The Unrelenting > Configuracao.");
             LogInfo("THE UNRELENTING: ORIGINS: aleatoria DESLIGADA por padrao; Haunted manual sempre disponivel.");
             LogInfo("THE UNRELENTING: CHANCES DE VELOCIDADE LENTO=" + SlowChancePercent +
@@ -176,6 +185,7 @@ namespace Arvak.TheUnrelenting
             OriginOptions options = new OriginOptions
             {
                 Enabled = false,
+                Repeat = true,
                 TestMode = false,
                 Chance = 1f,
                 Interval = 180f
@@ -188,6 +198,10 @@ namespace Arvak.TheUnrelenting
                 if (config == null) return options;
                 var group = config[OriginConfigGroup];
                 options.Enabled = (bool)group[CfgRandomEnabled].GetValue();
+                // Compatibilidade com arquivo de configuracao gravado pela v0.10.1.
+                // Se a nova opcao nao existir nele, nao desligar Origins inteiro.
+                try { options.Repeat = (bool)group[CfgRepeat].GetValue(); }
+                catch { options.Repeat = true; }
                 options.TestMode = (bool)group[CfgTestMode].GetValue();
                 options.Chance = Convert.ToSingle(group[CfgChance].GetValue());
                 options.Interval = Convert.ToSingle(group[CfgInterval].GetValue());
@@ -230,22 +244,39 @@ namespace Arvak.TheUnrelenting
         {
             OriginOptions options = ReadOriginOptions();
             bool changed = options.Enabled != _lastOriginsEnabled ||
-                           options.TestMode != _lastOriginsTestMode;
+                           options.Repeat != _lastOriginsRepeat ||
+                           options.TestMode != _lastOriginsTestMode ||
+                           Math.Abs(options.Chance - _lastOriginChance) > 0.001f ||
+                           Math.Abs(options.Interval - _lastOriginInterval) > 0.001f;
             if (changed)
             {
                 LogInfo("THE UNRELENTING: ORIGINS CONFIG ALTERADA! ALEATORIO=" + options.Enabled +
-                    " TESTE_RAPIDO=" + options.TestMode +
+                    " REPETIR=" + options.Repeat + " TESTE_RAPIDO=" + options.TestMode +
                     " CHANCE=" + options.Chance.ToString("F2") +
-                    "% INTERVALO_REAL=" + options.Interval.ToString("F0") + "s");
+                    "% INTERVALO_REAL=" + options.Interval.ToString("F0") + "s" +
+                    " ORIGENS_ATE_AGORA=" + _autoOriginCountInWorld);
                 _originScheduled = false;
                 _lastOriginsEnabled = options.Enabled;
+                _lastOriginsRepeat = options.Repeat;
                 _lastOriginsTestMode = options.TestMode;
+                _lastOriginChance = options.Chance;
+                _lastOriginInterval = options.Interval;
             }
-            if (!options.Enabled || _autoOriginDoneInWorld) return;
+            if (!options.Enabled) return;
+            if (!options.Repeat && _autoOriginDoneInWorld)
+            {
+                if (!_originLimitWarned)
+                {
+                    LogInfo("THE UNRELENTING: ORIGINS LIMITE ATINGIDO! REPETIR=False; " +
+                        "so uma origem automatica neste mundo. Habilite Repetir para novas maldicoes.");
+                    _originLimitWarned = true;
+                }
+                return;
+            }
+            _originLimitWarned = false;
 
-            // Nao iniciar uma segunda origem enquanto qualquer Haunted existir.
-            // Inclusive depois da extincao da cadeia, esta versao gera no maximo
-            // uma origem automatica por mundo carregado, ate sair/carregar mundo.
+            // Nunca gerar nova origem enquanto existir uma cadeia Haunted ativa.
+            // Depois da ultima morte, reagendar tempo COMPLETO (inclusive no teste).
             if (currentHaunted.Count > 0 || _targetQueue.Count > 0 || _host != null)
             {
                 // Reagendar ao ficar sem Haunted, evitando origem imediata ao final.
@@ -268,17 +299,26 @@ namespace Arvak.TheUnrelenting
             if (Time.unscaledTime < _nextOriginAttemptAt) return;
             _nextOriginAttemptAt = Time.unscaledTime + effectiveInterval;
             float roll = (float)(_random.NextDouble() * 100.0);
+            LogInfo("THE UNRELENTING: ORIGINS TENTATIVA! MODO=" +
+                (options.TestMode ? "TESTE" : "RARO") +
+                " CHANCE=" + effectiveChance.ToString("F2") +
+                "% SORTEIO=" + roll.ToString("F2") +
+                " ORIGENS_ANTERIORES=" + _autoOriginCountInWorld);
             if (roll >= effectiveChance)
             {
-                LogInfo("THE UNRELENTING: ORIGINS SORTEIO SEM EVENTO! CHANCE=" +
-                    effectiveChance.ToString("F2") + "%");
+                LogInfo("THE UNRELENTING: ORIGINS SORTEIO SEM EVENTO!");
                 return;
             }
 
             Actor candidate = PickOriginTarget(alive, currentHaunted);
             if (candidate == null)
             {
-                LogWarning("THE UNRELENTING: ORIGINS SEM ELEGIVEIS! Necessita humano, elfo, anao ou orc vivo.");
+                // Reduzir spam quando o jogador esta construindo um mundo vazio.
+                if (Time.unscaledTime >= _nextNoEligibleWarningAt)
+                {
+                    LogWarning("THE UNRELENTING: ORIGINS SEM ELEGIVEIS! Necessita humano, elfo, anao ou orc vivo.");
+                    _nextNoEligibleWarningAt = Time.unscaledTime + 60f;
+                }
                 return;
             }
             int candidateId = candidate.GetHashCode();
@@ -287,10 +327,12 @@ namespace Arvak.TheUnrelenting
                 // Garantir que a fila seja atualizada ainda neste mesmo scan.
                 currentHaunted.Add(candidate);
                 _autoOriginDoneInWorld = true;
+                _autoOriginCountInWorld++;
                 LogInfo("THE UNRELENTING: ORIGINS HAUNTED GERADA! ALVO_TEMP_ID=" +
                     candidateId + " ESPECIE=" + GetAssetId(candidate) +
                     " MODO=" + (options.TestMode ? "TESTE" : "RARO") +
-                    " UNICA_NESTA_SESSAO_DE_MUNDO=True");
+                    " TOTAL_ORIGENS_AUTOMATICAS=" + _autoOriginCountInWorld +
+                    " REPETIR=" + options.Repeat);
             }
             else
             {
@@ -605,10 +647,16 @@ namespace Arvak.TheUnrelenting
             _warnedNoHost = false;
             _reportedError = false;
             _autoOriginDoneInWorld = false;
+            _autoOriginCountInWorld = 0;
             _originScheduled = false;
             _lastOriginsEnabled = false;
+            _lastOriginsRepeat = false;
             _lastOriginsTestMode = false;
+            _lastOriginChance = -1f;
+            _lastOriginInterval = -1f;
             _nextOriginAttemptAt = 0f;
+            _nextNoEligibleWarningAt = 0f;
+            _originLimitWarned = false;
             _warnedOriginSettings = false;
         }
 
@@ -640,8 +688,8 @@ namespace Arvak.TheUnrelenting
                     if (actor.hasTrait(TraitId)) current.Add(actor);
                 }
 
-                // Origins e um sistema separado. Ele aplica Haunted em no maximo
-                // UMA unidade elegivel e depois deixa a fila existente funcionar.
+                // Origins aplica Haunted em UMA unidade por evento.
+                // Novas origens recorrentes aguardam o fim da cadeia anterior.
                 UpdateOrigins(alive, current);
 
                 // A fila respeita a ordem de descoberta; nao abre novos perseguidores.

@@ -1,8 +1,8 @@
-# The Unrelenting v0.10.1 — Origins
+# The Unrelenting v0.10.2 — Origins
 
 Experimental horror mod for **WorldBox 0.51.2 (build 719)** using **NeoModLoader**, tested in development on native Ubuntu/Steam by the mod creator.
 
-## New in v0.10.1
+## New in v0.10.2
 
 **Origins** supports two ways to begin the curse:
 
@@ -58,11 +58,24 @@ Replace `Main.cs`, `mod.json`, `README.md`, `LEIA-ME.txt`, `Locales/*.json` and 
 
 Commit: `feat: add opt-in rare Haunted origins and NML settings panel`
 
-Version: `v0.10.1` (release after testing).
+Version: `v0.10.2` (release after testing).
 
 
-## v0.10.1 — Localization fix
+## v0.10.2 — Localization fix
 
 - Added missing option descriptions in the NML Origins panel (English, pt, pt_BR).
 - No gameplay changes: automatic/manual Haunted, body hopping, speed randomness and sudden bursts are unchanged.
 - Commit: `fix: add missing Origins configuration descriptions`
+
+
+## 0.10.2 — Recurring Origins (fix)
+
+- **Random origins remain OFF by default.** Manual Haunted application is unchanged.
+- New setting: `RepeatAutomaticOrigins` (default **ON** once automatic origins are enabled). It allows new isolated Origins events after the active Haunted chain ends. Disable it to restore the single-automatic-origin-per-loaded-world behavior of 0.10.1.
+- Still at most one **active chain** at a time. Waiting restarts only once no Haunted victim/host/queue remains.
+- `TestMode` + `EnableRandomOrigins` attempt one guaranteed origin after 10 real seconds of eligible idle world; after that chain finishes, another attempt is scheduled when recurrence is enabled.
+- `ChancePerAttemptPercent` is a probability per attempt. It does not guarantee an origin. `AttemptIntervalSeconds` measures real seconds (`Time.unscaledTime`): 5x game speed does not shorten it.
+- Any config change (including sliders) now reschedules the timer; log `ORIGINS TENTATIVA!` records a roll, `ORIGINS HAUNTED GERADA!` records the new target and total counter. `SEM ELEGIVEIS` is rate limited.
+- This build is **not validated inside WorldBox**. Back up your test save and keep 0.10.1 for rollback.
+
+Suggested commit: `fix: allow recurring Haunted origins and improve origin diagnostics`

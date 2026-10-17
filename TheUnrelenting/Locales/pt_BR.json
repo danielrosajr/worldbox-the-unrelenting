@@ -6,9 +6,11 @@
   "EnableRandomOrigins": "Ativar origens aleatorias raras",
   "ChancePerAttemptPercent": "Chance por tentativa (%)",
   "AttemptIntervalSeconds": "Intervalo entre tentativas (segundos reais)",
-  "TestMode": "Teste rapido: gerar uma origem apos 10 s",
+  "TestMode": "Teste rapido: tentativa garantida apos 10 s",
   "EnableRandomOrigins Description": "Permite que uma maldicao Haunted comece automaticamente de forma muito rara. Desligado por padrao; a aplicacao manual continua disponivel.",
   "ChancePerAttemptPercent Description": "Probabilidade de uma origem automatica Haunted por tentativa programada. Ignorada no modo de teste rapido.",
   "AttemptIntervalSeconds Description": "Segundos reais entre tentativas de origem automatica quando o modo de teste rapido estiver desligado.",
-  "TestMode Description": "Somente para testes: com origens aleatorias ativadas, tenta gerar Haunted apos cerca de 10 segundos reais, se houver uma criatura elegivel."
+  "TestMode Description": "Somente para testes: com origens aleatorias ligadas, tenta gerar Haunted apos 10 segundos reais, se houver uma criatura elegivel. Permite repetir quando habilitado.",
+  "RepeatAutomaticOrigins": "Repetir origens apos o fim da maldicao",
+  "RepeatAutomaticOrigins Description": "Quando ativado, agenda uma nova origem depois que todas as vitimas Haunted desaparecerem. Nao cria uma segunda cadeia durante a perseguicao atual."
 }

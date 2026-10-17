@@ -6,9 +6,11 @@
   "EnableRandomOrigins": "Enable rare random origins",
   "ChancePerAttemptPercent": "Chance per attempt (%)",
   "AttemptIntervalSeconds": "Interval between attempts (real seconds)",
-  "TestMode": "Quick test: one guaranteed origin after 10 s",
+  "TestMode": "Quick test: guaranteed attempt after 10 s",
   "EnableRandomOrigins Description": "Allow a very rare Haunted curse to begin automatically. Off by default; manual application always works.",
   "ChancePerAttemptPercent Description": "Probability of an automatic Haunted origin on each scheduled attempt. Ignored in quick test mode.",
   "AttemptIntervalSeconds Description": "Real seconds between automatic origin attempts when quick test mode is disabled.",
-  "TestMode Description": "For testing only: when random origins are enabled, try a guaranteed Haunted origin after about 10 real seconds if an eligible creature exists."
+  "TestMode Description": "For testing only: when random origins are enabled, attempt a guaranteed Haunted origin after 10 real seconds if an eligible creature exists. Repeat works when enabled.",
+  "RepeatAutomaticOrigins": "Repeat random origins after a curse ends",
+  "RepeatAutomaticOrigins Description": "When enabled, schedule another random origin after all existing Haunted victims are gone. Never starts a second chain while the previous one is active."
 }

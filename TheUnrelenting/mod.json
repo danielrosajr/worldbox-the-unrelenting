@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.10.1",
-  "description": "Fix missing Origins panel descriptions; keeps v0.10.0 gameplay unchanged",
+  "version": "0.10.2",
+  "description": "Fix repeated Origins: optional recurrence, responsive settings and clearer attempt logs.",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []
