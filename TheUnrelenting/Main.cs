@@ -6,7 +6,7 @@ namespace Arvak.TheUnrelenting
     public class Main : BasicMod<Main>
     {
         // Identificadores estaveis: evitar renomear em versoes futuras.
-        public const string TraitId = "ArvakTheUnrelenting_Cursed";
+        public const string TraitId = "ArvakTheUnrelenting_Haunted";
         public const string GroupId = "ArvakTheUnrelenting_Group";
 
         protected override void OnModLoad()
@@ -24,9 +24,9 @@ namespace Arvak.TheUnrelenting
             };
             AssetManager.trait_groups.add(group);
 
-            // A trait e uma marca: nao muda atributos e nao nasce naturalmente.
+            // Haunted e uma marca: nao muda atributos e nao nasce naturalmente.
             // A perseguicao sera implementada em uma versao posterior.
-            ActorTrait cursed = new ActorTrait()
+            ActorTrait haunted = new ActorTrait()
             {
                 id = TraitId,
                 group_id = GroupId,
@@ -37,12 +37,12 @@ namespace Arvak.TheUnrelenting
                 can_be_cured = false,
                 needs_to_be_explored = false
             };
-            AssetManager.traits.add(cursed);
+            AssetManager.traits.add(haunted);
 
             // Torna a trait selecionavel no editor sem exigir descoberta previa.
             PlayerConfig.unlockTrait(TraitId);
 
-            LogInfo("THE UNRELENTING: TRAIT AMALDICOADO REGISTRADA COM SUCESSO! ID=" + TraitId);
+            LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
         }
     }
 }

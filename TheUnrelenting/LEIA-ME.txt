@@ -1,3 +1,3 @@
-The Unrelenting v0.1.0
+The Unrelenting v0.1.0 (Haunted)
 
-Leia o README.md dentro desta pasta para instrucoes, instalacao e testes.
+Leia README.md para instalar e testar.
