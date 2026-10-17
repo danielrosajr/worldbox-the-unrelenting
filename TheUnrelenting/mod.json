@@ -1,0 +1,10 @@
+{
+  "name": "The Unrelenting",
+  "GUID": "Arvak.TheUnrelenting",
+  "author": "Arvak",
+  "version": "0.0.1",
+  "description": "The Unrelenting - primeiro teste de carregamento (Hello World).",
+  "Dependencies": [],
+  "OptionalDependencies": [],
+  "IncompatibleWith": []
+}
