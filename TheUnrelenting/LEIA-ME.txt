@@ -1,4 +1,4 @@
-The Unrelenting v0.5.0 — Silent Steps
+The Unrelenting v0.6.0 — First Contact (experimental)
 
-Veja README.md para instrucoes.
-AVISO: use somente um mundo novo DESCARTAVEL: esta versao aplica traits temporarias a criaturas ja existentes e a limpeza nao e garantida apos salvar/recarregar.
+ATENCAO: EXECUCAO LETAL ATIVA. TESTE SOMENTE EM UM MUNDO DESCARTAVEL.
+Veja README.md para instrucoes e limite de compatibilidade.

@@ -1,76 +1,76 @@
-# The Unrelenting v0.5.0 — Silent Steps (teste experimental)
+# The Unrelenting v0.6.0 — First Contact (experimental)
 
-Mod para WorldBox 0.51.2 build 719 + NeoModLoader no Ubuntu.
+Mod para WorldBox **0.51.2 build 719**, usando NeoModLoader no Ubuntu.
 
-## Aviso: use somente um mundo de teste descartavel
+> **AVISO: TESTAR SOMENTE NUM MUNDO DESCARTAVEL.** Esta versao pode eliminar tanto
+> a vitima quanto uma criatura normal selecionada como perseguidor. Nao teste em
+> saves importantes. As traits nativas podem causar efeitos colaterais e sua
+> limpeza nao e garantida apos salvar/recarregar.
 
-Esta versao modifica temporariamente traits de criaturas **que ja existem**.
-O mod TENTA remover suas proprias traits ao encerrar a perseguicao, mas **nao ha
-persistencia/limpeza garantida depois de salvar, fechar e recarregar o mundo**.
-NÃO TESTE em um save importante. O uso de traits pode causar efeitos secundarios
-no proprio jogo (traits opostas, alteracoes de comportamento etc.).
+## O que mudou desde a v0.5.0
 
-## O que faz
+- Preserva a trait `Haunted` e ID `ArvakTheUnrelenting_Haunted`.
+- Preserva a escolha secreta de um perseguidor existente e a perseguicao via `goTo`.
+- Aplica temporariamente `slow`, `peaceful`, `immortal` e `super_health` quando faltantes.
+- Quando o perseguidor chega a **1.5 tiles** do alvo, chama `Actor.dieSimpleNone()`
+  para a vitima (execucao direta sem dano em area).
+- Confirma no log se a vitima morreu. Somente se isso for confirmado, limpa
+  traits do perseguidor, remove-o com `dieSimpleNone()` e encerra o vinculo.
+- Evita executar o mesmo vinculo repetidamente e nao continua emitindo
+  ordens de movimento a um alvo executado.
+- Ainda identifica unidades apenas durante a sessao atual: **sem persistencia de
+  associacoes apos reiniciar ou recarregar save**.
 
-- Preserva a trait Haunted e seu identificador (`ArvakTheUnrelenting_Haunted`).
-- Seleciona perseguidores entre criaturas vivas do mapa.
-- Evita candidatos com Fast, Agile e Plague para reduzir perda acidental de traits
-  opostas ao aplicar Slow e Immortal (nao e garantia completa).
-- Testa aplicar as traits nativas `slow`, `peaceful`, `immortal`, `super_health`.
-  Se um identificador/API falhar, loga falha sem impedir a perseguicao.
-- Guarda quais dessas traits NAO existiam e foram de fato adicionadas, para
-  tentar removê-las quando o alvo deixa de estar Haunted.
-- Continua usando `goTo` e distancia a cada 2 segundos, sem causar danos.
-- Corrige log duplicado de 'ALCANCOU O ALVO': agora aparece no maximo uma vez
-  por associacao alvo/perseguidor.
-- Registra possivel causa de `HAUNTED DEIXOU DE ESTAR ATIVO` como
-  `TRAIT_REMOVIDA`, `MORTE_OU_DESAPARECIMENTO`, `SEM_TILE` ou `FORA_DA_LISTA`.
+## O que AINDA nao esta pronto
 
-## Limites
-
-- `Peaceful` impede iniciar ataques, MAS nao torna amigavel para todo o mundo;
-  outros ainda podem atacar. `Immortal` nao impede morte em combate.
-- `super_health` aumenta a vida, NAO garante invulnerabilidade.
-- Os modificadores sao visiveis na ficha, entao NAO ha disfarce perfeito ainda.
-- Nao existe execucao por proximidade, travessia de oceano garantida nem
-  restauracao segura depois de restart/reload. Nao e ainda uma release final.
+- `Peaceful` nao impede que outros ataquem o perseguidor: neutralidade total
+  ainda NAO foi implementada.
+- `Immortal` nao evita ataques, e `super_health` nao garante invulnerabilidade.
+- Traits do perseguidor ficam visiveis na ficha: o disfarce NAO e perfeito.
+- Travessia de oceanos, estabilidade sob pause/reload, obstaculos e selecao de
+  candidatos do mesmo continente ainda nao foram resolvidos.
+- O perseguidor pode ser uma unidade comum e sua morte pode afetar o mundo.
 
 ## Instalacao
 
 1. Feche o WorldBox.
-2. Na pasta `worldbox/Mods/`, remova SOMENTE a pasta antiga `TheUnrelenting`.
-3. Extraia este ZIP e mova a nova pasta `TheUnrelenting` para `worldbox/Mods/`.
-4. Reinicie o WorldBox. Abra um mundo novo descartavel.
+2. Na pasta `worldbox/Mods/`, remova apenas a pasta antiga `TheUnrelenting`.
+3. Extraia o ZIP e mova sua pasta `TheUnrelenting` para `worldbox/Mods/`.
+4. Abra WorldBox e CRIE UM MUNDO NOVO DESCARTAVEL.
 
-## Teste
+## Teste controlado
 
-1. Coloque 10 a 20 unidades em uma ilha e aplique Haunted a UMA delas.
-2. Observe se o perseguidor caminha mais lentamente que antes. Ele pode ainda
-   ser atacado (isso e esperado no experimento).
-3. Remova Haunted e aguarde alguns segundos. O mod deve registrar LIMPEZA TRAIT.
-4. No terminal:
+1. Crie uma ilha conectada com de 10 a 20 unidades comuns.
+2. Aplique a trait `Haunted` a apenas uma criatura.
+3. Deixe o mundo rodar e observe as duas unidades se aproximando.
+4. Quando o perseguidor encostar, verifique se a vitima e o perseguidor
+   desapareceram/morreram. **Nao salve esse mundo.**
+5. Rode no Ubuntu:
 
 ```bash
 grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' \
-  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 100
+  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 120
 ```
 
-Procure por `TRAIT TEMPORARIA APLICADA`, `NAO FOI POSSIVEL APLICAR TRAIT`,
-`PERSEGUIDOR ESCOLHIDO`, `PROGRESSO PERSEGUICAO`, `ALCANCOU O ALVO`,
-`HAUNTED DEIXOU` e `LIMPEZA TRAIT`.
+Esperado em caso de sucesso:
 
-**Cuidado:** nao confunda ter registrado uma tentativa de aplicar trait com
-observar seu efeito. A propria execucao no jogo ainda precisa ser validada.
+```
+THE UNRELENTING: CONTATO COM A VITIMA!
+THE UNRELENTING: EXECUCAO CONFIRMADA!
+THE UNRELENTING: PERSEGUIDOR ENCERRADO! ... MORTO=True
+```
 
-## GitHub
+Se ocorrer `FALHA NA EXECUCAO`, `EXECUCAO SEM CONFIRMACAO` ou
+`FALHA AO ENCERRAR PERSEGUIDOR`, envie o log.
 
-- Substituir os arquivos anteriores pelos arquivos da nova pasta.
-- Commit: `feat: test native pursuer traits and improve pursuit lifecycle logs`
-- Tag sugerida apos teste: `v0.5.0`
-- Release publica: somente depois de testar com sucesso e registrar limites.
+## Atualizacao do GitHub
 
-## API e fontes
+- Substituir `Main.cs`, `mod.json`, `README.md`, `LEIA-ME.txt` e `Locales/`.
+- Commit: `feat: add lethal Haunted encounter and pursuer cleanup`
+- Versao: `v0.6.0` (experimental; release somente apos teste).
 
+## Fontes e compatibilidade
+
+- https://lous12.github.io/worldbox-modding-docs/api/runtime-entity-lifecycle/
 - https://lous12.github.io/worldbox-modding-docs/api/runtime-actor/
-- https://the-official-worldbox-wiki.fandom.com/wiki/Creature_Traits
 - https://github.com/WorldBoxOpenMods/ModLoader

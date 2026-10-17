@@ -12,8 +12,8 @@ namespace Arvak.TheUnrelenting
         public const string TraitId = "ArvakTheUnrelenting_Haunted";
         public const string GroupId = "ArvakTheUnrelenting_Group";
 
-        // v0.5.0: teste CONTROLADO com traits vanilla. A combinacao e provisoria;
-        // estes efeitos NAO garantem invulnerabilidade nem imunidade contra hostilidade.
+        // v0.6.0: execucao TESTAVEL ao contato. Traits nativas sao provisórias;
+        // elas NAO garantem invulnerabilidade nem neutralidade absoluta.
         // Nao use em saves importantes: o jogo pode salvar modificadores temporarios.
         private static readonly string[] TestTraits = {
             "slow", "peaceful", "immortal", "super_health"
@@ -66,7 +66,7 @@ namespace Arvak.TheUnrelenting
             AssetManager.traits.add(haunted);
 
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.5.0 TESTE LENTO/PACIFICO/RESISTENTE ATIVO (SEM MORTE). ");
+            LogInfo("THE UNRELENTING: V0.6.0 CONTATO LETAL ATIVO (TESTE EM MUNDO DESCARTAVEL).");
         }
 
         private void ResetTracking()
@@ -334,23 +334,71 @@ namespace Arvak.TheUnrelenting
                     ApplyTemporaryTraits(pursuer);
                 }
 
-                // Reenvia destino movel sem teleporte nem dano. Em alguns casos a
-                // IA nativa pode disputar o controle; isso sera refinado depois.
+                // Reenvia destino movel. Ao chegar a 1.5 tiles, elimina a vitima
+                // pelo ciclo de vida nativo (nao usa dano enorme, que poderia
+                // acertar terceiros). Depois remove o proprio perseguidor.
+                // ATENCAO: metodo destrutivo; usar somente em mundo descartavel.
+                List<Actor> completedTargets = new List<Actor>();
                 foreach (KeyValuePair<Actor, Actor> pair in _pursuerByTarget)
                 {
                     Actor target = pair.Key;
                     Actor pursuer = pair.Value;
-                    if (!current.Contains(target) || !HasUsableTile(pursuer))
+                    if (!current.Contains(target) || !HasUsableTile(target) ||
+                        !HasUsableTile(pursuer))
                         continue;
 
                     float distance = pursuer.distanceToActorTile(target);
                     if (distance <= 1.5f)
                     {
-                        // Emitir uma unica vez por par de perseguidor/alvo. O alvo
-                        // pode afastar-se de novo, mas nao queremos logs repetidos.
+                        // Guard contra chamadas repetidas enquanto o mesmo par
+                        // permanece ao alcance, inclusive no ciclo seguinte.
                         if (_reachedTargets.Add(target))
-                            LogInfo("THE UNRELENTING: PERSEGUIDOR ALCANCOU O ALVO (SEM MATAR)! ALVO_TEMP_ID=" +
-                                    target.GetHashCode() + " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode());
+                        {
+                            int targetId = target.GetHashCode();
+                            int pursuerId = pursuer.GetHashCode();
+                            LogInfo("THE UNRELENTING: CONTATO COM A VITIMA! ALVO_TEMP_ID=" +
+                                    targetId + " PERSEGUIDOR_TEMP_ID=" + pursuerId);
+
+                            try
+                            {
+                                // Verificado para WorldBox 0.51.2 (build 719).
+                                target.dieSimpleNone();
+                                if (!target.isAlive())
+                                {
+                                    LogInfo("THE UNRELENTING: EXECUCAO CONFIRMADA! ALVO_TEMP_ID=" +
+                                            targetId + " PERSEGUIDOR_TEMP_ID=" + pursuerId);
+
+                                    // Sempre desfazer primeiro os modificadores
+                                    // adicionados pelo mod. A criatura de teste
+                                    // pode ser um habitante normal preexistente.
+                                    CleanupTemporaryTraits(pursuer);
+                                    try
+                                    {
+                                        if (pursuer.isAlive())
+                                            pursuer.dieSimpleNone();
+                                        LogInfo("THE UNRELENTING: PERSEGUIDOR ENCERRADO! PERSEGUIDOR_TEMP_ID=" +
+                                                pursuerId + " MORTO=" + (!pursuer.isAlive()));
+                                    }
+                                    catch (Exception pursuerError)
+                                    {
+                                        LogWarning("THE UNRELENTING: FALHA AO ENCERRAR PERSEGUIDOR_TEMP_ID=" +
+                                                   pursuerId + " ERRO=" + pursuerError);
+                                    }
+
+                                    completedTargets.Add(target);
+                                    continue; // Nao mandar novo goTo nem logar distancia de morto.
+                                }
+                                LogWarning("THE UNRELENTING: EXECUCAO SEM CONFIRMACAO! ALVO_TEMP_ID=" + targetId);
+                            }
+                            catch (Exception executionError)
+                            {
+                                LogWarning("THE UNRELENTING: FALHA NA EXECUCAO ALVO_TEMP_ID=" +
+                                           targetId + " ERRO=" + executionError);
+                            }
+                            // Permite novo teste em uma verificacao futura caso
+                            // a API tenha falhado, mantendo o mundo vivo.
+                            _reachedTargets.Remove(target);
+                        }
                     }
                     else
                     {
@@ -371,6 +419,13 @@ namespace Arvak.TheUnrelenting
                         _lastLoggedDistance[target] = distance;
                         _lastProgressTime[target] = Time.unscaledTime;
                     }
+                }
+
+                // Adiar a remocao ate depois do foreach do Dictionary.
+                foreach (Actor completed in completedTargets)
+                {
+                    ForgetTarget(completed);
+                    current.Remove(completed);
                 }
 
                 _hauntedUnits = current;
