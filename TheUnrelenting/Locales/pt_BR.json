@@ -47,5 +47,20 @@
   "VerboseAntiKiteLogs": "Logs detalhados do anti-circulos (debug)",
   "VerboseAntiKiteLogs Description": "Registra distancia e metricas de movimento circular a cada cinco segundos enquanto o alvo esta perto.",
   "trait_ArvakTheUnrelenting_PunishingRush": "Perseguicao Sobrenatural",
-  "trait_ArvakTheUnrelenting_PunishingRush_info": "A entidade recebeu uma velocidade aterrorizante por alguns instantes."
+  "trait_ArvakTheUnrelenting_PunishingRush_info": "A entidade recebeu uma velocidade aterrorizante por alguns instantes.",
+  "TraumaWitness": "Trauma Witness — Contagio psicologico",
+  "TrackViolentDeaths": "Detectar mortes provavelmente violentas",
+  "TrackViolentDeaths Description": "Observa mortes e alteracoes nos contadores de abates de criaturas proximas; estado de queimando, quando confirmado, tambem vale. A deteccao por varredura e aproximada. Nao infecta por si so.",
+  "EnableTraumaTransfer": "Transmitir Haunted a testemunha proxima (experimental)",
+  "EnableTraumaTransfer Description": "DESLIGADO por padrao. Apos morte provavelmente violenta, sorteia no maximo um humanoide proximo que podera receber Haunted. Proximidade nao garante que viu o ocorrido.",
+  "IncludeNonHauntedDeaths": "Incluir vitimas sem Haunted",
+  "IncludeNonHauntedDeaths Description": "Permite que um homicidio provavel ou morte com fogo de criaturas comuns inicie a maldicao em testemunha; desligado: apenas mortes de criaturas antes marcadas com Haunted.",
+  "TraumaRadius": "Raio de testemunhas (tiles)",
+  "TraumaRadius Description": "Distancia maxima do local da morte a uma testemunha humanoide. Proximidade NAO significa linha de visao confirmada.",
+  "TraumaChancePercent": "Chance basica de trauma (%)",
+  "TraumaChancePercent Description": "Chance de uma unica testemunha sorteada receber Haunted. Exposicoes repetidas somam ate 15 pontos percentuais, limitada a 100%.",
+  "TraumaCooldownSeconds": "Intervalo minimo entre transmissoes (segundos reais)",
+  "TraumaCooldownSeconds Description": "Cooldown global apos transmissao de trauma bem-sucedida. Evita contaminacao em massa. Nao interfere na aplicacao manual.",
+  "VerboseTraumaLogs": "Logs detalhados de trauma (debug)",
+  "VerboseTraumaLogs Description": "Exibe mortes ignoradas, bloqueios por cooldown e contadores. Pode gerar muitas linhas."
 }

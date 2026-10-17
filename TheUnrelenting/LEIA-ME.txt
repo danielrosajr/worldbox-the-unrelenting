@@ -1,12 +1,11 @@
-The Unrelenting v0.11.2 - No More Games
+THE UNRELENTING v0.11.3 — TRAUMA WITNESS
 
-Ao circular perto de um perseguidor por muito tempo, a vitima pode provocar uma corrida sobrenatural.
-Padrão: distancia 15 tiles, 30s reais, boost 6s e cooldown 90s.
+Extraia e substitua toda a pasta TheUnrelenting. Nao misture versoes.
+Configuracao: NML > Mods > The Unrelenting > Configuracao > TraumaWitness.
+Transferencia por trauma desligada por padrao. Ative para testes em um mundo descartavel.
+Apenas mortes com indicio de abate proximo ou status queimando confirmado podem iniciar trauma.
+Uma unica testemunha humanoide elegivel pode herdar Haunted a cada morte, com cooldown global.
+As outras mecanicas da v0.11.2 foram preservadas.
 
-Instale a pasta TheUnrelenting em Mods (raiz do WorldBox); feche o jogo antes de substituir.
-Para testar, diminua Temporizador AntiKite para 8s e ligue os logs detalhados.
-Acompanhe logs com grep ANTI-KITE em Player.log.
-
-GitHub: substitua arquivos anteriores pelos desta versao.
-Commit: feat: punish circling the Haunted pursuer with a supernatural sprint
-Tag: v0.11.2 (publicar apos testes).
+Veja README.md para passos de teste, limitações e comando de logs.
+Commit: feat: add opt-in Trauma Witness transmission for violent deaths

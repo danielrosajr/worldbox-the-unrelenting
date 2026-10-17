@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.11.2 - No More Games (The Witness e Relentless Pursuit preservados): observacao conservadora da morte de Haunted e transmissao experimental opcional.
+    // v0.11.3 - Trauma Witness (The Witness e Relentless Pursuit preservados): observacao conservadora da morte de Haunted e transmissao experimental opcional.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -219,6 +219,59 @@ namespace Arvak.TheUnrelenting
         private int _witnessTransfers;
 
 
+        // TRAUMA WITNESS: morte violenta observada por proximidade (NAO raycast de visao).
+        // Observacao e transferencia separadas: ambas exigem config valida.
+        // Uma testemunha elegivel por evento, cooldown global e nenhuma infeccao
+        // por morte natural ou pelo proprio mod. Causa da morte e INFERIDA,
+        // nunca declarada como fato incontroverso.
+        private const string TraumaConfigGroup = "TraumaWitness";
+        private const string CfgTraumaTrack = "TrackViolentDeaths";
+        private const string CfgTraumaTransfer = "EnableTraumaTransfer";
+        private const string CfgTraumaOrdinary = "IncludeNonHauntedDeaths";
+        private const string CfgTraumaRadius = "TraumaRadius";
+        private const string CfgTraumaChance = "TraumaChancePercent";
+        private const string CfgTraumaCooldown = "TraumaCooldownSeconds";
+        private const string CfgTraumaVerbose = "VerboseTraumaLogs";
+        private const int MaxTraumaObservedActors = 6500;
+        private const float MaxLikelyKillerDistance = 8f;
+        private struct TraumaOptions
+        {
+            public bool Tracking;
+            public bool Transfer;
+            public bool OrdinaryDeaths;
+            public float Radius;
+            public float Chance;
+            public float Cooldown;
+            public bool Verbose;
+        }
+        private struct TraumaRecord
+        {
+            public Vector2 Position;
+            public bool Burning;
+            public bool Haunted;
+            public TraumaRecord(Vector2 position, bool burning, bool haunted)
+            {
+                Position = position;
+                Burning = burning;
+                Haunted = haunted;
+            }
+        }
+        private readonly Dictionary<Actor, TraumaRecord> _traumaPreviouslyAlive =
+            new Dictionary<Actor, TraumaRecord>();
+        private readonly Dictionary<Actor, int> _traumaPreviousKills =
+            new Dictionary<Actor, int>();
+        private readonly Dictionary<Actor, int> _traumaExposures =
+            new Dictionary<Actor, int>();
+        private readonly HashSet<Actor> _entityExecutedVictims = new HashSet<Actor>();
+        private readonly HashSet<Actor> _witnessTransferredVictims = new HashSet<Actor>();
+        private bool _traumaConfigWarned;
+        private bool _traumaPopulationWarned;
+        private bool _traumaStatusWarned;
+        private float _traumaLastTransferAt = -100000f;
+        private int _traumaObservedDeaths;
+        private int _traumaViolentDeaths;
+        private int _traumaTransfers;
+
         protected override void OnModLoad()
         {
             LogInfo("THE UNRELENTING: MOD CARREGADO COM SUCESSO!");
@@ -253,10 +306,11 @@ namespace Arvak.TheUnrelenting
             AssetManager.traits.add(rush);
             rush.base_stats["speed"] = PunishingRushSpeedBonus;
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.11.2 NO MORE GAMES + RELENTLESS PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.11.3 TRAUMA WITNESS + NO MORE GAMES + RELENTLESS PURSUIT + WITNESS + ORIGINS ATIVOS.");
             LogInfo("THE UNRELENTING: ANTI-KITE PREPARADO! BONUS_SPEED=" + PunishingRushSpeedBonus.ToString("F0") +
                 " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s; CONFIGURAVEL NO NML.");
             LogInfo("THE UNRELENTING: WITNESS: rastreio de mortes ativo; transmissao a assassino PROVAVEL desligada por padrao.");
+            LogInfo("THE UNRELENTING: TRAUMA: observacao de mortes violentas e transferencia configuraveis no NML; INFECCAO DESLIGADA POR PADRAO.");
             LogInfo("THE UNRELENTING: PURSUIT AI: precisao por proximidade e resgate por possessao configuraveis.");
             LogInfo("THE UNRELENTING: ORIGINS: menu do NML > Mods > The Unrelenting > Configuracao.");
             LogInfo("THE UNRELENTING: ORIGINS: aleatoria DESLIGADA por padrao; Haunted manual sempre disponivel.");
@@ -378,6 +432,41 @@ namespace Arvak.TheUnrelenting
                 }
             }
             return options;
+        }
+
+        private TraumaOptions ReadTraumaOptions()
+        {
+            TraumaOptions opts = new TraumaOptions
+            {
+                Tracking = true, Transfer = false, OrdinaryDeaths = true,
+                Radius = 10f, Chance = 25f, Cooldown = 120f, Verbose = false
+            };
+            try
+            {
+                ModConfig config = GetConfig();
+                if (config == null) { opts.Transfer = false; return opts; }
+                var group = config[TraumaConfigGroup];
+                opts.Tracking = (bool)group[CfgTraumaTrack].GetValue();
+                opts.Transfer = (bool)group[CfgTraumaTransfer].GetValue();
+                opts.OrdinaryDeaths = (bool)group[CfgTraumaOrdinary].GetValue();
+                opts.Radius = Mathf.Clamp(Convert.ToSingle(group[CfgTraumaRadius].GetValue()), 3f, 30f);
+                opts.Chance = Mathf.Clamp(Convert.ToSingle(group[CfgTraumaChance].GetValue()), 0f, 100f);
+                opts.Cooldown = Mathf.Clamp(Convert.ToSingle(group[CfgTraumaCooldown].GetValue()), 10f, 900f);
+                opts.Verbose = (bool)group[CfgTraumaVerbose].GetValue();
+                _traumaConfigWarned = false;
+            }
+            catch (Exception e)
+            {
+                opts.Tracking = false;
+                opts.Transfer = false; // Nao contagiar com configuracao ausente/corrompida.
+                if (!_traumaConfigWarned)
+                {
+                    LogWarning("THE UNRELENTING: TRAUMA CONFIG INDISPONIVEL! TRANSFERENCIA DESATIVADA. " +
+                        e.GetType().Name + ": " + e.Message);
+                    _traumaConfigWarned = true;
+                }
+            }
+            return opts;
         }
 
         private PursuitOptions ReadPursuitOptions()
@@ -733,6 +822,7 @@ namespace Arvak.TheUnrelenting
                 if (MutateTrait(candidate, "addTrait", TraitId) && candidate.hasTrait(TraitId))
                 {
                     current.Add(candidate);
+                    _witnessTransferredVictims.Add(old);
                     _witnessTransfers++;
                     LogInfo("THE UNRELENTING: WITNESS TRANSMISSAO AO ASSASSINO PROVAVEL! " +
                         "VITIMA_TEMP_ID=" + victimId + " NOVO_HAUNTED_TEMP_ID=" +
@@ -780,6 +870,182 @@ namespace Arvak.TheUnrelenting
                 LogInfo("THE UNRELENTING: WITNESS SNAPSHOT! HAUNTED=" + current.Count +
                     " CONTADORES_DISPONIVEIS=" + latest.Count + " MORTES=" + _witnessDeaths +
                     " CANDIDATOS=" + _witnessConfirmedCandidates + " TRANSMISSOES=" + _witnessTransfers);
+        }
+
+        // Somente aceitamos status de fogo SE um metodo/campo runtime real o confirmar.
+        // Nunca deduzimos combustao apenas pela especie ou proximidade de lava.
+        private static bool TryWasBurning(Actor actor)
+        {
+            if (actor == null) return false;
+            try
+            {
+                object value = ReadMember(actor, "is_on_fire") ??
+                    ReadMember(actor, "isOnFire") ?? ReadMember(actor, "is_burning");
+                if (value is bool && (bool)value) return true;
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+                foreach (string name in new string[] { "isOnFire", "isBurning" })
+                {
+                    MethodInfo method = actor.GetType().GetMethod(name, flags, null, Type.EmptyTypes, null);
+                    if (method != null && method.ReturnType == typeof(bool) &&
+                        (bool)method.Invoke(actor, null)) return true;
+                }
+                foreach (string methodName in new string[] { "hasStatus", "hasStatusEffect", "hasStatusEffectById" })
+                {
+                    MethodInfo method = actor.GetType().GetMethod(methodName, flags, null,
+                        new Type[] { typeof(string) }, null);
+                    if (method == null || method.ReturnType != typeof(bool)) continue;
+                    foreach (string effect in new string[] { "burning", "on_fire" })
+                        if ((bool)method.Invoke(actor, new object[] { effect })) return true;
+                }
+            }
+            catch { /* status de fogo desconhecido nesta build: nao supor que estava queimando */ }
+            return false;
+        }
+
+        private void ObserveTraumaDeaths(List<Actor> alive, HashSet<Actor> current, TraumaOptions opts)
+        {
+            if (!opts.Tracking) return;
+            if (_traumaPreviouslyAlive.Count == 0) return;
+            HashSet<Actor> stillAlive = new HashSet<Actor>(alive);
+            // Indicios de violencia: exatamente um ator vivo aumentou em 1 seu
+            // contador de kills desde o scan anterior, PERTO da morte; ou o
+            // status de queimando foi verificado antes de a vitima morrer.
+            // Nao ha garantia absoluta de quem matou ou do campo de visao.
+            List<Actor> possibleKillers = new List<Actor>();
+            foreach (Actor actor in alive)
+            {
+                int previous, latest;
+                if (!_traumaPreviousKills.TryGetValue(actor, out previous) ||
+                    !TryGetKillCount(actor, out latest)) continue;
+                if (latest - previous == 1) possibleKillers.Add(actor);
+            }
+            foreach (KeyValuePair<Actor, TraumaRecord> previous in _traumaPreviouslyAlive)
+            {
+                Actor victim = previous.Key;
+                if (victim == null || stillAlive.Contains(victim) || victim.isAlive()) continue;
+                if (_entityExecutedVictims.Contains(victim)) continue;
+                if (_witnessTransferredVictims.Contains(victim))
+                {
+                    if (opts.Verbose)
+                        LogInfo("THE UNRELENTING: TRAUMA IGNORADO! MOTIVO=ASSASSINO_JA_RECEBEU_HAUNTED VITIMA=" + victim.GetHashCode());
+                    continue; // prioridade absoluta: assassino no The Witness.
+                }
+                TraumaRecord record = previous.Value;
+                if (!opts.OrdinaryDeaths && !record.Haunted) continue;
+                _traumaObservedDeaths++;
+                Actor probableKiller = null;
+                int candidates = 0;
+                foreach (Actor attacker in possibleKillers)
+                {
+                    Vector2 pos;
+                    if (!TryGetPosition(attacker, out pos)) continue;
+                    if (Vector2.Distance(pos, record.Position) > MaxLikelyKillerDistance) continue;
+                    probableKiller = attacker;
+                    candidates++;
+                }
+                bool likelyMurder = candidates == 1;
+                bool fireEvidence = record.Burning;
+                // Nenhuma morte natural, de velhice ou sem indicio conhecido
+                // pode iniciar Trauma. Multiplos possiveis assassinos = ambiguidade.
+                if (!fireEvidence && !likelyMurder)
+                {
+                    if (opts.Verbose)
+                        LogInfo("THE UNRELENTING: TRAUMA MORTE IGNORADA! VITIMA_TEMP_ID=" +
+                            victim.GetHashCode() + " MOTIVO=" + (candidates > 1 ? "AUTORES_AMBIGUOS" : "SEM_INDICIO_VIOLENTO"));
+                    continue;
+                }
+                _traumaViolentDeaths++;
+                Actor witness = null;
+                int eligibleCount = 0;
+                foreach (Actor bystander in alive)
+                {
+                    if (object.ReferenceEquals(bystander, probableKiller) ||
+                        object.ReferenceEquals(bystander, _host) || current.Contains(bystander) ||
+                        !EligibleOriginAssets.Contains(GetAssetId(bystander))) continue;
+                    Vector2 pos;
+                    if (!TryGetPosition(bystander, out pos)) continue;
+                    if (Vector2.Distance(pos, record.Position) > opts.Radius) continue;
+                    eligibleCount++;
+                    // Escolhe exatamente UM entre as testemunhas elegiveis.
+                    if (_random.Next(eligibleCount) == 0) witness = bystander;
+                }
+                LogInfo("THE UNRELENTING: TRAUMA MORTE VIOLENTA PROVAVEL! VITIMA_TEMP_ID=" +
+                    victim.GetHashCode() + " HAUNTED=" + record.Haunted +
+                    " INDICIO=" + (fireEvidence ? "QUEIMANDO_ANTES_DA_MORTE" : "KILLS_DELTA_E_PROXIMIDADE") +
+                    " TESTEMUNHAS_POR_PROXIMIDADE=" + eligibleCount +
+                    " AUTOR_PROVAVEL=" + (probableKiller == null ? "NENHUM" : probableKiller.GetHashCode().ToString()));
+                if (!opts.Transfer || witness == null) continue;
+                if (Time.unscaledTime < _traumaLastTransferAt + opts.Cooldown)
+                {
+                    if (opts.Verbose)
+                        LogInfo("THE UNRELENTING: TRAUMA COOLDOWN! RESTANTE_SEG=" +
+                            (_traumaLastTransferAt + opts.Cooldown - Time.unscaledTime).ToString("F1"));
+                    continue;
+                }
+                int exposures;
+                if (!_traumaExposures.TryGetValue(witness, out exposures)) exposures = 0;
+                // Testemunha que ja sobreviveu a eventos traumaticos tem chance
+                // levemente maior. Nao utiliza mana nem trata Stupid como doenca mental.
+                float chance = Mathf.Min(100f, opts.Chance + Mathf.Min(3, exposures) * 5f);
+                float roll = (float)(_random.NextDouble() * 100.0);
+                _traumaExposures[witness] = Math.Min(4, exposures + 1);
+                LogInfo("THE UNRELENTING: TRAUMA TESTEMUNHA SORTEADA! VITIMA_TEMP_ID=" +
+                    victim.GetHashCode() + " TESTEMUNHA_TEMP_ID=" + witness.GetHashCode() +
+                    " CHANCE=" + chance.ToString("F1") + "% SORTEIO=" + roll.ToString("F1") +
+                    " EXPOSICOES_ANTERIORES=" + exposures);
+                if (roll >= chance) continue;
+                if (!Usable(witness) || current.Contains(witness) || witness.hasTrait(TraitId)) continue;
+                if (MutateTrait(witness, "addTrait", TraitId) && witness.hasTrait(TraitId))
+                {
+                    current.Add(witness); // ja entra na fila no MESMO scan.
+                    _traumaLastTransferAt = Time.unscaledTime;
+                    _traumaTransfers++;
+                    LogInfo("THE UNRELENTING: TRAUMA TRANSMISSAO CONFIRMADA! " +
+                        "VITIMA_TEMP_ID=" + victim.GetHashCode() +
+                        " NOVO_HAUNTED_TEMP_ID=" + witness.GetHashCode() +
+                        " TOTAL_TRAUMA=" + _traumaTransfers +
+                        " COOLDOWN_SEG=" + opts.Cooldown.ToString("F0"));
+                }
+                else LogWarning("THE UNRELENTING: TRAUMA FALHA AO TRANSMITIR! TESTEMUNHA=" + witness.GetHashCode());
+            }
+        }
+
+        private void SnapshotTrauma(List<Actor> alive, HashSet<Actor> current, TraumaOptions opts)
+        {
+            if (!opts.Tracking || alive.Count > MaxTraumaObservedActors)
+            {
+                _traumaPreviouslyAlive.Clear();
+                _traumaPreviousKills.Clear();
+                _traumaExposures.Clear();
+                if (opts.Tracking && !_traumaPopulationWarned)
+                {
+                    LogWarning("THE UNRELENTING: TRAUMA PAUSADO: populacao acima do limite de " +
+                        MaxTraumaObservedActors + " atores; nenhuma transmissao feita ate reduzir.");
+                    _traumaPopulationWarned = true;
+                }
+                return;
+            }
+            _traumaPopulationWarned = false;
+            _traumaPreviouslyAlive.Clear();
+            _traumaPreviousKills.Clear();
+            HashSet<Actor> tracked = new HashSet<Actor>();
+            foreach (Actor actor in alive)
+            {
+                tracked.Add(actor);
+                Vector2 pos;
+                if (TryGetPosition(actor, out pos))
+                    _traumaPreviouslyAlive[actor] = new TraumaRecord(pos, TryWasBurning(actor), current.Contains(actor));
+                int kills;
+                if (TryGetKillCount(actor, out kills)) _traumaPreviousKills[actor] = kills;
+            }
+            foreach (Actor known in new List<Actor>(_traumaExposures.Keys))
+                if (!tracked.Contains(known)) _traumaExposures.Remove(known);
+            // Mortes causadas internamente sao excluidas apenas no scan seguinte.
+            _entityExecutedVictims.Clear();
+            _witnessTransferredVictims.Clear();
+            if (opts.Verbose && (_traumaObservedDeaths > 0 || _traumaTransfers > 0))
+                LogInfo("THE UNRELENTING: TRAUMA RESUMO! MORTES=" + _traumaObservedDeaths +
+                    " VIOLENTAS_PROVAVEIS=" + _traumaViolentDeaths + " TRANSMISSOES=" + _traumaTransfers);
         }
 
         private Actor PickOriginTarget(List<Actor> alive, HashSet<Actor> currentHaunted)
@@ -1248,6 +1514,7 @@ namespace Arvak.TheUnrelenting
                 LogInfo("THE UNRELENTING: CONTATO COM A VITIMA! ALVO_TEMP_ID=" + victimId +
                     " HOSPEDEIRO_TEMP_ID=" + hostId);
                 Actor victim = _target;
+                _entityExecutedVictims.Add(victim);
                 victim.dieSimpleNone();
                 if (!victim.isAlive())
                 {
@@ -1348,6 +1615,7 @@ namespace Arvak.TheUnrelenting
                 if (vanish && Usable(old))
                 {
                     // Como o host pertence a entidade neste momento, ele desaparece.
+                    _entityExecutedVictims.Add(old);
                     old.dieSimpleNone();
                 }
                 LogInfo("THE UNRELENTING: ENTIDADE ENCERRADA! MOTIVO=" + reason +
@@ -1408,6 +1676,18 @@ namespace Arvak.TheUnrelenting
             _witnessDeaths = 0;
             _witnessConfirmedCandidates = 0;
             _witnessTransfers = 0;
+            _traumaPreviouslyAlive.Clear();
+            _traumaPreviousKills.Clear();
+            _traumaExposures.Clear();
+            _entityExecutedVictims.Clear();
+            _witnessTransferredVictims.Clear();
+            _traumaConfigWarned = false;
+            _traumaPopulationWarned = false;
+            _traumaStatusWarned = false;
+            _traumaLastTransferAt = -100000f;
+            _traumaObservedDeaths = 0;
+            _traumaViolentDeaths = 0;
+            _traumaTransfers = 0;
             _trackedHost = null;
             _trackedTarget = null;
             _nextMotionTickAt = 0f;
@@ -1465,12 +1745,15 @@ namespace Arvak.TheUnrelenting
                 // The Witness usa snapshots da iteracao ANTERIOR para identificar
                 // uma morte natural/combate antes de atualizar a fila.
                 WitnessOptions witness = ReadWitnessOptions();
+                TraumaOptions trauma = ReadTraumaOptions();
                 ObserveWitnessDeaths(alive, current, witness);
+                ObserveTraumaDeaths(alive, current, trauma);
 
                 // Origins aplica Haunted em UMA unidade por evento.
                 // Novas origens recorrentes aguardam o fim da cadeia anterior.
                 UpdateOrigins(alive, current);
                 SnapshotWitness(alive, current, witness);
+                SnapshotTrauma(alive, current, trauma);
 
                 // A fila respeita a ordem de descoberta; nao abre novos perseguidores.
                 foreach (Actor actor in alive)

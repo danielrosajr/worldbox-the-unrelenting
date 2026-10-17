@@ -122,5 +122,48 @@
       "Type": "SWITCH",
       "BoolVal": false
     }
+  ],
+  "TraumaWitness": [
+    {
+      "Id": "TrackViolentDeaths",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "EnableTraumaTransfer",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "IncludeNonHauntedDeaths",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "TraumaRadius",
+      "Type": "SLIDER",
+      "FloatVal": 10.0,
+      "MinFloatVal": 3.0,
+      "MaxFloatVal": 30.0
+    },
+    {
+      "Id": "TraumaChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 25.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
+    },
+    {
+      "Id": "TraumaCooldownSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 120.0,
+      "MinFloatVal": 10.0,
+      "MaxFloatVal": 900.0
+    },
+    {
+      "Id": "VerboseTraumaLogs",
+      "Type": "SWITCH",
+      "BoolVal": false
+    }
   ]
 }

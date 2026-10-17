@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.11.2",
-  "description": "The Unrelenting: Haunted pursuit, Witness and anti-kiting punishment sprint",
+  "version": "0.11.3",
+  "description": "The Unrelenting: optional Trauma Witness curse transfer, AntiKite, pursuit AI, Witness and Origins",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []
