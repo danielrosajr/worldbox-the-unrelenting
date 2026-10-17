@@ -1,0 +1,19 @@
+THE UNRELENTING v0.11.4 — HAUNTED: TRAUMA
+
+Instalacao: feche o WorldBox e substitua a pasta TheUnrelenting INTEIRA.
+Nao misture arquivos de versoes diferentes.
+
+Haunted (original): atribuicao manual, Origins aleatorio e transmissao ao assassino.
+Haunted: Trauma (nova trait): infeccao por testemunhar morte provavelmente violenta.
+As duas ativam a mesma entidade, a mesma fila e todas as mecanicas anteriores.
+
+Teste: ative TraumaWitness > EnableTraumaTransfer, configure chance 100%,
+realize uma morte violenta perto de outra criatura e inspecione a trait da testemunha.
+Por seguranca, transmissoes por trauma continuam desligadas por padrao.
+
+Novas infeccoes por trauma recebem a nova trait. Nao altera retroativamente saves.
+Rollback: restaure a pasta completa v0.11.3; nao use saves com a nova trait
+sem antes tomar as devidas precaucoes.
+
+README.md: passos completos de teste e log.
+Commit: feat: distinguish trauma-origin curses with Haunted Trauma trait
