@@ -191,5 +191,41 @@
       "Type": "SWITCH",
       "BoolVal": true
     }
+  ],
+  "Immersion": [
+    {
+      "Id": "EnablePresenceCue",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "EnableDeathJumpscare",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "JumpscareChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 100.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
+    },
+    {
+      "Id": "ImmersionSoundVolumePercent",
+      "Type": "SLIDER",
+      "FloatVal": 20.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 50.0
+    },
+    {
+      "Id": "ShowDiagnosticHud",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "VerboseImmersionLogs",
+      "Type": "SWITCH",
+      "BoolVal": false
+    }
   ]
 }

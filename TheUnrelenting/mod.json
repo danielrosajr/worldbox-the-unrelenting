@@ -2,9 +2,10 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.12.0",
-  "description": "Bloodline: opt-in descendant inheritance after a confirmed entity execution; same pursuer, third curse trait, fail-closed genealogy checks.",
+  "version": "0.13.0",
+  "description": "Polish: custom curse icons, quieter diagnostics, experimental opt-in FMOD cues and controlled-victim death jumpscare",
   "Dependencies": [],
   "OptionalDependencies": [],
-  "IncompatibleWith": []
+  "IncompatibleWith": [],
+  "iconPath": "icon.png"
 }

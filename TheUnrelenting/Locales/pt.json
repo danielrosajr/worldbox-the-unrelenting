@@ -75,5 +75,18 @@
   "BloodlineMaxGenerations": "Numero maximo de geracoes",
   "BloodlineMaxGenerations Description": "Busca filhos primeiro, depois netos e bisnetos, conforme o numero escolhido (1 a 3). Da prioridade a geracao mais proxima com herdeiros elegiveis.",
   "VerboseBloodlineLogs": "Diagnostico detalhado de Bloodline",
-  "VerboseBloodlineLogs Description": "Mostra resultado da busca de descendentes e detalhes basicos quando a entidade executa uma vitima. Nao cria parentes nem transmite maldicao por si so."
+  "VerboseBloodlineLogs Description": "Mostra resultado da busca de descendentes e detalhes basicos quando a entidade executa uma vitima. Nao cria parentes nem transmite maldicao por si so.",
+  "Immersion": "Imersao e interface",
+  "EnablePresenceCue": "Sinal sonoro de perigo sutil",
+  "EnablePresenceCue Description": "Reproduz um aviso discreto apos controlar uma vitima Haunted proxima a entidade por 8 segundos reais. Desligado por padrao.",
+  "EnableDeathJumpscare": "Susto visual ao morrer",
+  "EnableDeathJumpscare Description": "Opcional: imagem em tela cheia e som quando a entidade executa o personagem comprovadamente controlado pelo jogador. Desligado por padrao.",
+  "JumpscareChancePercent": "Chance de jumpscare (%)",
+  "JumpscareChancePercent Description": "Chance de susto apos a entidade executar o personagem controlado (0-100%).",
+  "ImmersionSoundVolumePercent": "Volume da imersao (%)",
+  "ImmersionSoundVolumePercent Description": "Volume dos sons FMOD, limitado a 50%. Comece com valor baixo.",
+  "ShowDiagnosticHud": "Mostrar painel de diagnostico",
+  "ShowDiagnosticHud Description": "Mostra contadores e informacoes da entidade na tela. Revela o misterio; desligado por padrao.",
+  "VerboseImmersionLogs": "Logs detalhados de imersao",
+  "VerboseImmersionLogs Description": "Registra quando nao ha prova do personagem controlado ou o som opcional nao funciona."
 }

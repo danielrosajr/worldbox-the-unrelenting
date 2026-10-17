@@ -1,4 +1,4 @@
-# The Unrelenting v0.12.0 — Bloodline
+# The Unrelenting v0.13.0 — Bloodline
 
 ## Nova mecanica — a maldicao alcanca a familia
 
@@ -163,3 +163,17 @@ grep -nE 'TRAUMA|WITNESS TRANSMISSAO|HAUNTED ENTROU|error CS|Failed to compile' 
 **Rollback:** use v0.11.2 zip and replace the entire mod folder.
 
 **GitHub commit:** `feat: add opt-in Trauma Witness transmission for violent deaths`
+
+
+## v0.13.0 — Polish & Immersion (EXPERIMENTAL)
+
+- Custom GameResources icons: `ui/icons/unrelenting_haunted.png`, `unrelenting_trauma.png`, `unrelenting_bloodline.png`. The mod also has `icon.png`.
+- New `Immersion` NML group: quiet proximity tone, optional 1.25-second death jumpscare image + sting sound, chance slider, capped volume, diagnostics HUD and detailed logs. Everything is OFF by default except sliders.
+- The jumpscare **only triggers** after a confirmed entity kill and a positive runtime match that the player is actually controlling that victim. Merely observing or selecting the unit MUST NOT trigger it. Because the exact possession API is undocumented, detection uses cautious reflection; when no confirmed match is found, nothing plays. Enable `VerboseImmersionLogs` to report `IMMERSION CONTROLE NAO COMPROVADO` while debugging an external control mod.
+- Both sound effects are locally generated WAVs played through FMOD using reflection. No FMOD? The game keeps working without sound. Sound volume is capped at 50% and default is 20%. Avoid using headphones at high volume for jumpscare testing.
+- Witness/Trauma repetitive unchanged snapshots are logged only when content changes, rather than every scan.
+- New optional in-game diagnostic overlay with origins, curse transmissions, actor info. Disabled by default to avoid spoilers.
+- Never test in an important save before verifying the NML asset paths and controller integration.
+- **Scope:** not yet a universal integration with every third-party third-person control mod. If you do not see a jumpscare when your controlled victim dies, send the control-mod name/version and the `IMMERSION` logs. We will adapt to its real API instead of guessing.
+
+Suggested GitHub commit: `feat: add custom Haunted icons and optional immersion effects`

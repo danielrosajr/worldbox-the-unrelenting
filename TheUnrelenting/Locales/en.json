@@ -75,5 +75,18 @@
   "BloodlineMaxGenerations": "Maximum descendant generations",
   "BloodlineMaxGenerations Description": "Search direct children first, then grandchildren and great-grandchildren up to this depth (1 to 3). If a closer generation has eligible descendants, prefer it.",
   "VerboseBloodlineLogs": "Detailed Bloodline diagnostics",
-  "VerboseBloodlineLogs Description": "Show lineage candidate and failure information when the entity executes a victim. Does not create relationships or transmit the curse by itself."
+  "VerboseBloodlineLogs Description": "Show lineage candidate and failure information when the entity executes a victim. Does not create relationships or transmit the curse by itself.",
+  "Immersion": "Immersion and UI",
+  "EnablePresenceCue": "Subtle danger cue",
+  "EnablePresenceCue Description": "Play a quiet warning after controlling a Haunted victim near the pursuer for 8 real seconds (off by default).",
+  "EnableDeathJumpscare": "Death jumpscare",
+  "EnableDeathJumpscare Description": "Optional fullscreen image and sound after death by the entity. Only when the game positively identifies the controlled victim (off by default).",
+  "JumpscareChancePercent": "Death jumpscare chance (%)",
+  "JumpscareChancePercent Description": "Chance of a jumpscare after the possessed victim is killed by the entity (0-100%).",
+  "ImmersionSoundVolumePercent": "Immersion volume (%)",
+  "ImmersionSoundVolumePercent Description": "FMOD sound volume, limited to 50% maximum. Start low.",
+  "ShowDiagnosticHud": "Show diagnostic overlay",
+  "ShowDiagnosticHud Description": "Show debug counters and pursuer information on screen. Spoils the mystery; off by default.",
+  "VerboseImmersionLogs": "Detailed immersion logs",
+  "VerboseImmersionLogs Description": "Print when controlled-character detection is unavailable or optional sound playback fails."
 }

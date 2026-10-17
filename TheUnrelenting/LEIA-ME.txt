@@ -1,4 +1,4 @@
-THE UNRELENTING v0.12.0 — BLOODLINE
+THE UNRELENTING v0.13.0 — BLOODLINE
 
 Instale a pasta TheUnrelenting completa no diretorio de mods NML.
 A maldicao Haunted: Bloodline exige transmissao ativada no painel.
@@ -13,3 +13,12 @@ Comando: grep -nE 'BLOODLINE|error CS|Failed to compile' ~/.config/unity3d/mkarp
 Para rollback, restaure v0.11.4. Primeiro remova Haunted: Bloodline do save, se existir.
 
 GitHub: feat: add opt-in Bloodline inheritance with verified descendant links
+
+
+NOVO NA V0.13.0
+- Icons proprios das 3 maldicoes e icone do mod.
+- Painel: Immersion. Som sutil, jumpscare de morte com imagem, chance, volume limitado e diagnostico na tela.
+- SONS E JUMPSCARE VEM DESLIGADOS. Requer identificar exatamente o personagem CONTROLADO no mod de terceira pessoa. Se nao identificar, nao toca nem mostra.
+- Logs redundantes de Witness/Trauma reduzidos.
+- Teste inicial em mundo descartavel. Para depurar, ative VerboseImmersionLogs e envie registros IMMERSION do Player.log.
+Commit: feat: add custom Haunted icons and optional immersion effects

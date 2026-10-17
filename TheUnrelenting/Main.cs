@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.IO;
 using NeoModLoader.api;
 using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.12.0 - Bloodline: heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
+    // v0.13.0 - Polish and Immersion: heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -596,6 +597,350 @@ namespace Arvak.TheUnrelenting
             else LogWarning("THE UNRELENTING: BLOODLINE FALHA AO APLICAR TRAIT! HERDEIRO=" + heir.GetHashCode());
         }
 
+        // Immersion is always opt-in. Fail closed if a player's possessed Actor cannot
+        // be identified in this WorldBox build/third-party control mod.
+        private const string ImmersionGroup = "Immersion";
+        private struct ImmersionOptions
+        {
+            public bool PresenceCue;
+            public bool Jumpscare;
+            public float JumpscareChance;
+            public float SoundVolume;
+            public bool DiagnosticHud;
+            public bool Verbose;
+        }
+        private ImmersionOptions _immersion;
+        private bool _immersionConfigWarned;
+        private bool _controlWarningLogged;
+        private float _nextControlWarningAt;
+        private Actor _presenceTrackedTarget;
+        private float _presenceNearSince = -1f;
+        private float _nextPresenceSoundAt;
+        private float _nextPresenceControllerProbeAt;
+        private Texture2D _jumpscareTexture;
+        private float _jumpscareUntil;
+        private int _jumpscareCount;
+        private int _presenceCueCount;
+        private string _lastWitnessSummary;
+        private string _lastTraumaSummary;
+        private readonly List<SoundHandle> _activeSounds = new List<SoundHandle>();
+
+        private class SoundHandle
+        {
+            public object Sound;
+            public float ReleaseAt;
+        }
+
+        private ImmersionOptions ReadImmersionOptions()
+        {
+            ImmersionOptions o = new ImmersionOptions
+            {
+                PresenceCue = false, Jumpscare = false, JumpscareChance = 100f,
+                SoundVolume = 20f, DiagnosticHud = false, Verbose = false
+            };
+            try
+            {
+                ModConfig cfg = GetConfig();
+                if (cfg == null) return o;
+                var g = cfg[ImmersionGroup];
+                o.PresenceCue = (bool)g["EnablePresenceCue"].GetValue();
+                o.Jumpscare = (bool)g["EnableDeathJumpscare"].GetValue();
+                o.JumpscareChance = Mathf.Clamp(Convert.ToSingle(g["JumpscareChancePercent"].GetValue()), 0f, 100f);
+                o.SoundVolume = Mathf.Clamp(Convert.ToSingle(g["ImmersionSoundVolumePercent"].GetValue()), 0f, 50f);
+                o.DiagnosticHud = (bool)g["ShowDiagnosticHud"].GetValue();
+                o.Verbose = (bool)g["VerboseImmersionLogs"].GetValue();
+                _immersionConfigWarned = false;
+            }
+            catch (Exception e)
+            {
+                o.PresenceCue = false;
+                o.Jumpscare = false;
+                if (!_immersionConfigWarned)
+                {
+                    LogWarning("THE UNRELENTING: IMMERSION CONFIG INDISPONIVEL, SONS E SUSTOS DESLIGADOS! " + e.Message);
+                    _immersionConfigWarned = true;
+                }
+            }
+            return o;
+        }
+
+        private void LoadImmersionArt()
+        {
+            try
+            {
+                string p = Path.Combine(GetDeclaration().FolderPath, "Assets", "jumpscare.png");
+                if (!File.Exists(p))
+                {
+                    LogWarning("THE UNRELENTING: IMMERSION IMAGEM NAO ENCONTRADA: " + p);
+                    return;
+                }
+                _jumpscareTexture = new Texture2D(2, 2);
+                _jumpscareTexture.LoadImage(File.ReadAllBytes(p));
+                _jumpscareTexture.filterMode = FilterMode.Bilinear;
+                LogInfo("THE UNRELENTING: IMMERSION ARTE CARREGADA!");
+            }
+            catch (Exception e)
+            {
+                _jumpscareTexture = null;
+                LogWarning("THE UNRELENTING: IMMERSION IMAGEM INDISPONIVEL: " + e.Message);
+            }
+        }
+
+        // Evidence-based control detection only: NEVER mistake a selected or watched actor
+        // for the one actively controlled by the player. Reflection accommodates custom mods.
+        private static bool ExactActor(object candidate, Actor victim)
+        {
+            return candidate is Actor && object.ReferenceEquals(candidate, victim);
+        }
+        private static object Member(object owner, Type t, string name, bool isStatic)
+        {
+            if (t == null || string.IsNullOrEmpty(name)) return null;
+            BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
+                (isStatic ? BindingFlags.Static : BindingFlags.Instance);
+            try
+            {
+                FieldInfo f = t.GetField(name, flags);
+                if (f != null) return f.GetValue(owner);
+                PropertyInfo p = t.GetProperty(name, flags);
+                if (p != null && p.GetIndexParameters().Length == 0) return p.GetValue(owner, null);
+            }
+            catch { }
+            return null;
+        }
+        private static readonly string[] ControlActorNames =
+        {
+            "controlled_actor", "controlledActor", "ControlledActor",
+            "possessed_actor", "possessedActor", "PossessedActor",
+            "player_actor", "playerActor", "PlayerActor",
+            "controlled_unit", "controlledUnit", "ControlledUnit",
+            "currentActor", "CurrentActor", "current_actor",
+            "targetActor", "TargetActor", "actor", "unit"
+        };
+        private static readonly string[] ControlSingletonNames =
+        { "instance", "Instance", "current", "Current", "singleton", "Singleton" };
+        private static readonly string[] DirectActorFlags =
+        { "is_player_controlled", "isPlayerControlled", "IsPlayerControlled", "is_possessed_by_player", "isPossessedByPlayer" };
+
+        private bool IsPlayerControlling(Actor victim)
+        {
+            if (!Usable(victim)) return false;
+            foreach (string key in DirectActorFlags)
+            {
+                object val = Member(victim, victim.GetType(), key, false);
+                if (val is bool && (bool)val) return true;
+            }
+            // Explicit control member on the world manager (not camera selection).
+            if (World.world != null)
+            {
+                foreach (string key in ControlActorNames)
+                {
+                    if (key == "actor" || key == "unit" || key == "targetActor" || key == "TargetActor") continue;
+                    if (ExactActor(Member(World.world, World.world.GetType(), key, false), victim)) return true;
+                }
+            }
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type[] types;
+                try { types = assembly.GetTypes(); }
+                catch (ReflectionTypeLoadException ex) { types = ex.Types; }
+                catch { continue; }
+                if (types == null) continue;
+                foreach (Type t in types)
+                {
+                    if (t == null) continue;
+                    string name = t.Name.ToLowerInvariant();
+                    if (!(name.Contains("possession") || name.Contains("possesscontroller") ||
+                          name.Contains("playercontrol") || name.Contains("thirdpersoncontroller") ||
+                          name.Contains("unitcontroller") || name.Contains("controlunit") ||
+                          name.Contains("actorcontroller"))) continue;
+                    foreach (string key in ControlActorNames)
+                    {
+                        if (ExactActor(Member(null, t, key, true), victim)) return true;
+                    }
+                    foreach (string instanceName in ControlSingletonNames)
+                    {
+                        object singleton = Member(null, t, instanceName, true);
+                        if (singleton == null) continue;
+                        foreach (string key in ControlActorNames)
+                            if (ExactActor(Member(singleton, singleton.GetType(), key, false), victim)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private void ReportUnverifiedControl(Actor target)
+        {
+            if (_immersion.Verbose && Time.unscaledTime >= _nextControlWarningAt)
+            {
+                _nextControlWarningAt = Time.unscaledTime + 30f;
+                LogInfo("THE UNRELENTING: IMMERSION CONTROLE NAO COMPROVADO! ALVO_TEMP_ID=" +
+                    (target == null ? "NENHUM" : target.GetHashCode().ToString()) +
+                    " EFEITOS BLOQUEADOS (NAO E SELECAO DE PERSONAGEM).");
+            }
+        }
+
+        // WorldBox uses FMOD instead of Unity's regular AudioSource. Invoke FMOD by
+        // reflection, so missing FMOD bindings never prevent this mod from compiling.
+        private bool TryPlayWav(string file, float volume)
+        {
+            if (volume <= 0) return false;
+            try
+            {
+                string path = Path.Combine(GetDeclaration().FolderPath, "Audio", file);
+                if (!File.Exists(path)) return false;
+                Type runtimeManager = null;
+                foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    runtimeManager = a.GetType("FMODUnity.RuntimeManager", false);
+                    if (runtimeManager != null) break;
+                }
+                if (runtimeManager == null) return false;
+                PropertyInfo studioProperty = runtimeManager.GetProperty("StudioSystem", BindingFlags.Static | BindingFlags.Public);
+                if (studioProperty == null) return false;
+                object studio = studioProperty.GetValue(null, null);
+                if (studio == null) return false;
+                Type studioType = studio.GetType();
+                MethodInfo getCore = studioType.GetMethod("getCoreSystem");
+                if (getCore == null) return false;
+                ParameterInfo[] coreParams = getCore.GetParameters();
+                if (coreParams.Length != 1) return false;
+                Type coreType = coreParams[0].ParameterType.GetElementType();
+                if (coreType == null) return false;
+                object[] coreArgs = { Activator.CreateInstance(coreType) };
+                if (Convert.ToInt32(getCore.Invoke(studio, coreArgs)) != 0) return false;
+                object core = coreArgs[0];
+                MethodInfo createSound = null;
+                foreach (MethodInfo mi in coreType.GetMethods())
+                {
+                    ParameterInfo[] p = mi.GetParameters();
+                    if (mi.Name == "createSound" && p.Length == 3 && p[0].ParameterType == typeof(string)
+                        && p[1].ParameterType.IsEnum && p[2].ParameterType.IsByRef) { createSound = mi; break; }
+                }
+                if (createSound == null) return false;
+                Type soundType = createSound.GetParameters()[2].ParameterType.GetElementType();
+                if (soundType == null) return false;
+                object[] createArgs = { path, Enum.ToObject(createSound.GetParameters()[1].ParameterType, 0), Activator.CreateInstance(soundType) };
+                if (Convert.ToInt32(createSound.Invoke(core, createArgs)) != 0) return false;
+                object sound = createArgs[2];
+                MethodInfo play = null;
+                foreach (MethodInfo mi in coreType.GetMethods())
+                {
+                    ParameterInfo[] p = mi.GetParameters();
+                    if (mi.Name == "playSound" && p.Length == 4 && p[0].ParameterType == soundType &&
+                        p[2].ParameterType == typeof(bool) && p[3].ParameterType.IsByRef) { play = mi; break; }
+                }
+                if (play == null) return false;
+                Type groupType = play.GetParameters()[1].ParameterType;
+                Type channelType = play.GetParameters()[3].ParameterType.GetElementType();
+                if (channelType == null) return false;
+                object[] playArgs = { sound, groupType.IsValueType ? Activator.CreateInstance(groupType) : null, false, Activator.CreateInstance(channelType) };
+                if (Convert.ToInt32(play.Invoke(core, playArgs)) != 0) return false;
+                object channel = playArgs[3];
+                MethodInfo setVolume = channelType.GetMethod("setVolume", new[] { typeof(float) });
+                if (setVolume != null) setVolume.Invoke(channel, new object[] { Mathf.Clamp(volume, 0f, 0.5f) });
+                _activeSounds.Add(new SoundHandle { Sound = sound, ReleaseAt = Time.unscaledTime + 7f });
+                return true;
+            }
+            catch (Exception e)
+            {
+                if (_immersion.Verbose)
+                    LogWarning("THE UNRELENTING: IMMERSION FMOD INDISPONIVEL: " + e.Message);
+                return false;
+            }
+        }
+
+        private void CleanPlayedSounds()
+        {
+            for (int i = _activeSounds.Count - 1; i >= 0; i--)
+            {
+                if (Time.unscaledTime < _activeSounds[i].ReleaseAt) continue;
+                try
+                {
+                    object sound = _activeSounds[i].Sound;
+                    MethodInfo release = sound.GetType().GetMethod("release", Type.EmptyTypes);
+                    if (release != null) release.Invoke(sound, new object[0]);
+                }
+                catch { }
+                _activeSounds.RemoveAt(i);
+            }
+        }
+
+        private void UpdatePresenceCue()
+        {
+            if (!_immersion.PresenceCue || !Usable(_host) || !Usable(_target))
+            {
+                _presenceTrackedTarget = null;
+                _presenceNearSince = -1f;
+                return;
+            }
+            float now = Time.unscaledTime;
+            float distance = _host.distanceToActorTile(_target);
+            if (distance > 12f)
+            {
+                _presenceTrackedTarget = null;
+                _presenceNearSince = -1f;
+                return;
+            }
+            if (!object.ReferenceEquals(_presenceTrackedTarget, _target))
+            {
+                _presenceTrackedTarget = _target;
+                _presenceNearSince = now;
+                return;
+            }
+            if (now - _presenceNearSince < 8f || now < _nextPresenceSoundAt) return;
+            // Failed control lookups must not reflect over every loaded assembly
+            // 5+ times per second during close pursuit.
+            if (now < _nextPresenceControllerProbeAt) return;
+            _nextPresenceControllerProbeAt = now + 3f;
+            if (!IsPlayerControlling(_target))
+            {
+                ReportUnverifiedControl(_target);
+                return;
+            }
+            _nextPresenceSoundAt = now + 22f;
+            _presenceCueCount++;
+            bool played = TryPlayWav("presence.wav", _immersion.SoundVolume / 100f * 0.4f);
+            if (_immersion.Verbose)
+                LogInfo("THE UNRELENTING: IMMERSION SINAL DE PROXIMIDADE! DISTANCIA=" + distance.ToString("F1") +
+                    " SOM_REPRODUZIDO=" + played + " TOTAL=" + _presenceCueCount);
+        }
+
+        private void MaybeStartDeathJumpscare(Actor victim, bool confirmedControl)
+        {
+            if (!_immersion.Jumpscare || !confirmedControl || _jumpscareTexture == null) return;
+            float roll = (float)(_random.NextDouble() * 100d);
+            if (roll >= _immersion.JumpscareChance)
+            {
+                if (_immersion.Verbose) LogInfo("THE UNRELENTING: IMMERSION JUMPSCARE NAO SORTEADO! SORTEIO=" + roll.ToString("F1"));
+                return;
+            }
+            _jumpscareCount++;
+            _jumpscareUntil = Time.unscaledTime + 1.25f;
+            bool played = TryPlayWav("death_sting.wav", _immersion.SoundVolume / 100f);
+            LogInfo("THE UNRELENTING: IMMERSION JUMPSCARE EXIBIDO! VITIMA_TEMP_ID=" + victim.GetHashCode() +
+                " SOM_REPRODUZIDO=" + played + " TOTAL=" + _jumpscareCount);
+        }
+
+        private void OnGUI()
+        {
+            if (_jumpscareTexture != null && Time.unscaledTime < _jumpscareUntil)
+            {
+                GUI.depth = -999;
+                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), _jumpscareTexture, ScaleMode.ScaleAndCrop);
+                return;
+            }
+            if (!_immersion.DiagnosticHud || World.world == null) return;
+            GUI.depth = -998;
+            GUI.Box(new Rect(10, 10, 315, 139), "THE UNRELENTING / DIAGNOSTICS");
+            string body = "Origens: " + _autoOriginCountInWorld + " | Kills entidade: " + _killsThisChain +
+                "\nWitness: " + _witnessTransfers + " | Trauma: " + _traumaTransfers + " | Bloodline: " + _bloodlineTransfers +
+                "\nFila: " + _targetQueue.Count + " | Alvo: " + (_target == null ? "nenhum" : GetHauntedKind(_target)) +
+                "\nCorpo: " + (_host == null ? "nenhum" : GetAssetId(_host)) +
+                " | Sustos: " + _jumpscareCount;
+            GUI.Label(new Rect(21, 38, 292, 102), body);
+        }
+
         protected override void OnModLoad()
         {
             LogInfo("THE UNRELENTING: MOD CARREGADO COM SUCESSO!");
@@ -609,7 +954,7 @@ namespace Arvak.TheUnrelenting
             {
                 id = TraitId,
                 group_id = GroupId,
-                path_icon = "ui/icons/neomodloader",
+                path_icon = "ui/icons/unrelenting_haunted",
                 can_be_given = true,
                 can_be_removed = true,
                 can_be_cured = false,
@@ -621,7 +966,7 @@ namespace Arvak.TheUnrelenting
             {
                 id = TraumaTraitId,
                 group_id = GroupId,
-                path_icon = "ui/icons/neomodloader",
+                path_icon = "ui/icons/unrelenting_trauma",
                 can_be_given = false,
                 can_be_removed = true,
                 can_be_cured = false,
@@ -631,7 +976,7 @@ namespace Arvak.TheUnrelenting
             {
                 id = BloodlineTraitId,
                 group_id = GroupId,
-                path_icon = "ui/icons/neomodloader",
+                path_icon = "ui/icons/unrelenting_bloodline",
                 can_be_given = false,
                 can_be_removed = true,
                 can_be_cured = false,
@@ -654,8 +999,10 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.12.0 BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.13.0 POLISH + IMMERSION + BLOODLINE + TRAUMA WITNESS + ANTI-KITE + PURSUIT + WITNESS + ORIGINS ATIVOS.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
+            LogInfo("THE UNRELENTING: IMMERSION: icons customizados; audio e susto opt-in e exigem controle verificado.");
+            LoadImmersionArt();
             LogInfo("THE UNRELENTING: ANTI-KITE PREPARADO! BONUS_SPEED=" + PunishingRushSpeedBonus.ToString("F0") +
                 " RAIO_DEFAULT=15 TEMPO_DEFAULT=30s; CONFIGURAVEL NO NML.");
             LogInfo("THE UNRELENTING: WITNESS: rastreio de mortes ativo; transmissao a assassino PROVAVEL desligada por padrao.");
@@ -1232,9 +1579,16 @@ namespace Arvak.TheUnrelenting
                 if (TryGetPosition(actor, out pos)) _lastHauntedPositions[actor] = pos;
             }
             if (options.Verbose && current.Count > 0)
-                LogInfo("THE UNRELENTING: WITNESS SNAPSHOT! HAUNTED=" + current.Count +
-                    " CONTADORES_DISPONIVEIS=" + latest.Count + " MORTES=" + _witnessDeaths +
-                    " CANDIDATOS=" + _witnessConfirmedCandidates + " TRANSMISSOES=" + _witnessTransfers);
+            {
+                string summary = "HAUNTED=" + current.Count + " CONTADORES_DISPONIVEIS=" + latest.Count +
+                    " MORTES=" + _witnessDeaths + " CANDIDATOS=" + _witnessConfirmedCandidates +
+                    " TRANSMISSOES=" + _witnessTransfers;
+                if (summary != _lastWitnessSummary)
+                {
+                    _lastWitnessSummary = summary;
+                    LogInfo("THE UNRELENTING: WITNESS SNAPSHOT! " + summary);
+                }
+            }
         }
 
         // Somente aceitamos status de fogo SE um metodo/campo runtime real o confirmar.
@@ -1410,8 +1764,15 @@ namespace Arvak.TheUnrelenting
             _entityExecutedVictims.Clear();
             _witnessTransferredVictims.Clear();
             if (opts.Verbose && (_traumaObservedDeaths > 0 || _traumaTransfers > 0))
-                LogInfo("THE UNRELENTING: TRAUMA RESUMO! MORTES=" + _traumaObservedDeaths +
-                    " VIOLENTAS_PROVAVEIS=" + _traumaViolentDeaths + " TRANSMISSOES=" + _traumaTransfers);
+            {
+                string summary = "MORTES=" + _traumaObservedDeaths + " VIOLENTAS_PROVAVEIS=" +
+                    _traumaViolentDeaths + " TRANSMISSOES=" + _traumaTransfers;
+                if (summary != _lastTraumaSummary)
+                {
+                    _lastTraumaSummary = summary;
+                    LogInfo("THE UNRELENTING: TRAUMA RESUMO! " + summary);
+                }
+            }
         }
 
         private Actor PickOriginTarget(List<Actor> alive, HashSet<Actor> currentHaunted)
@@ -1918,11 +2279,16 @@ namespace Arvak.TheUnrelenting
                             " GERACAO=" + heirGeneration + " ELEGIVEIS=" + heirCandidates);
                     }
                 }
+                // Determine player control BEFORE dying; dead actors may lose their
+                // possession link during the game's death event.
+                bool controlledAtDeath = _immersion.Jumpscare && IsPlayerControlling(victim);
+                if (_immersion.Jumpscare && !controlledAtDeath) ReportUnverifiedControl(victim);
                 _entityExecutedVictims.Add(victim);
                 victim.dieSimpleNone();
                 if (!victim.isAlive())
                 {
                     _killsThisChain++;
+                    MaybeStartDeathJumpscare(victim, controlledAtDeath);
                     LogInfo("THE UNRELENTING: EXECUCAO CONFIRMADA! ALVO_TEMP_ID=" + victimId +
                         " HOSPEDEIRO_TEMP_ID=" + hostId + " TOTAL=" + _killsThisChain);
                     _targetQueue.Remove(victim);
@@ -1949,6 +2315,7 @@ namespace Arvak.TheUnrelenting
             }
 
             UpdateAntiKite(now, distance);
+            UpdatePresenceCue();
 
             // Neutraliza tarefas normais (incluindo sono) periodicamente, mas
             // NAO a cada frame, evitando resetar todo o pathfinding constantemente.
@@ -2048,6 +2415,14 @@ namespace Arvak.TheUnrelenting
 
         private void ResetForWorld()
         {
+            _presenceTrackedTarget = null;
+            _presenceNearSince = -1f;
+            _nextPresenceSoundAt = 0f;
+            _nextPresenceControllerProbeAt = 0f;
+            _jumpscareUntil = 0f;
+            _lastWitnessSummary = null;
+            _lastTraumaSummary = null;
+            _controlWarningLogged = false;
             // Se outro mundo foi carregado, nao chamar die() em objetos antigos.
             foreach (Actor actor in new List<Actor>(_traitsAddedByMod.Keys))
                 CleanupTemporaryTraits(actor);
@@ -2151,6 +2526,8 @@ namespace Arvak.TheUnrelenting
                     if (HasAnyHaunted(actor)) current.Add(actor);
                 }
 
+                _immersion = ReadImmersionOptions();
+                CleanPlayedSounds();
                 _antiKiteOptions = ReadAntiKiteOptions();
                 if (!_antiKiteOptions.Enabled && _kiteBoostActive) EndPunishingRush();
 
