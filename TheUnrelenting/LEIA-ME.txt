@@ -1,23 +1,24 @@
-THE UNRELENTING v0.8.0 - PERSEGUICAO IMPREVISIVEL
+THE UNRELENTING v0.9.0 - SUDDEN RUSH
 
-NOVIDADE: a cada novo hospedeiro, a entidade sorteia sua velocidade:
-- 50% LENTO: adiciona a trait slow
-- 35% NORMAL: deixa a velocidade natural da especie
-- 15% RAPIDO: adiciona a trait fast
+Novo: a entidade pode acelerar de repente SEM trocar de hospedeiro.
+- Ao assumir corpo: lento 50%, normal 35%, rapido 15%.
+- Se o corpo nao for rapido, a cada 10-17s (primeira tentativa) e 12-22s depois
+  ele tem chance de 25% por tentativa de correr por 3-5.5s reais.
+- So tenta arrancada entre 2 e 55 unidades da vitima; nao e garantido.
+- Quando termina, o corpo volta para o modo de velocidade anterior.
 
-O modo pode mudar novamente quando a entidade troca de hospedeiro.
-As traits adicionadas pelo mod sao removidas quando o hospedeiro e liberado.
+Mantidos: Haunted, fila de vitimas, troca entre bichos e pessoas, execucao,
+limpeza das traits adicionadas pelo mod. Nao habilitamos maldicao aleatoria,
+transmissao ao assassino ou hereditariedade nesta versao.
 
-TESTE (MUNDO DESCARTAVEL):
-1. Feche o WorldBox.
-2. Substitua a pasta TheUnrelenting na pasta Mods utilizada pelo NeoModLoader.
-3. Abra o jogo, crie criaturas comuns e aplique Haunted a 2-3 unidades.
-4. Consulte o log e procure VELOCIDADE=SLOW, NORMAL ou FAST.
-
+INSTALAR: substitua a pasta TheUnrelenting antiga (Mods) por esta, com jogo fechado.
+TESTAR: mundo descartavel, 2-3 Haunted e muitos animais/humanos comuns.
 COMANDO:
-grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 120
+grep -nE 'ARRANCADA|EXECUCAO CONFIRMADA|error CS|Failed to compile' \
+  ~/.config/unity3d/mkarpenko/WorldBox/Player.log | tail -n 100
 
 GITHUB:
-Substituir todos os arquivos antigos pelos do ZIP; a pasta Locales permanece.
-Commit: feat: randomize pursuer speed with slow, normal and fast modes
-Versao: v0.8.0 (publicar release apenas depois do teste).
+Arquivos: substitua Main.cs, mod.json, README.md e LEIA-ME.txt.
+Locales: mantenha os arquivos ja existentes.
+Commit: feat: add sudden speed bursts during Haunted pursuit
+Tag: v0.9.0 (apos testar).

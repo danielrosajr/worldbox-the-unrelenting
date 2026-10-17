@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.8.0 - UMA entidade, multiplas vitimas em fila, corpo hospedeiro trocavel, velocidades aleatorias.
+    // v0.9.0 - velocidades por hospedeiro + ARRANCADA SUBITA rara no mesmo hospedeiro.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -30,6 +30,20 @@ namespace Arvak.TheUnrelenting
         private const int SlowChancePercent = 50;
         private const int NormalChancePercent = 35;
         private enum PursuitSpeed { Slow, Normal, Fast }
+
+        // Arrancada surpresa: cada hospedeiro SLOW ou NORMAL tem uma chance
+        // pequena de acelerar por alguns segundos, SEM trocar de corpo.
+        // Todos os tempos abaixo sao em segundos REAIS (nao tempo de simulacao).
+        private const bool EnableSuddenBurst = true;
+        private const int BurstChancePercent = 25; // Por tentativa, nao por segundo.
+        private const float FirstBurstCheckMin = 10f;
+        private const float FirstBurstCheckMax = 17f;
+        private const float NextBurstCheckMin = 12f;
+        private const float NextBurstCheckMax = 22f;
+        private const float BurstDurationMin = 3f;
+        private const float BurstDurationMax = 5.5f;
+        private const float MinBurstTargetDistance = 2f;
+        private const float MaxBurstTargetDistance = 55f;
 
         // Apenas as especies comuns predefinidas. IDs podem variar por versao;
         // a lista e verificada contra os assets reais dos atores no mundo.
@@ -61,6 +75,10 @@ namespace Arvak.TheUnrelenting
         private bool _warnedNoHost;
         private int _killsThisChain;
         private PursuitSpeed _currentSpeed = PursuitSpeed.Normal;
+        private bool _burstActive;
+        private float _burstEndsAt;
+        private float _nextBurstCheckAt;
+        private bool _burstCleanupWarned;
 
         protected override void OnModLoad()
         {
@@ -82,10 +100,12 @@ namespace Arvak.TheUnrelenting
                 needs_to_be_explored = false
             });
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: V0.8.0 CADEIA + HOSPEDEIROS + VELOCIDADE ALEATORIA ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.9.0 CADEIA + VELOCIDADE ALEATORIA + ARRANCADAS ATIVAS.");
             LogInfo("THE UNRELENTING: CHANCES DE VELOCIDADE LENTO=" + SlowChancePercent +
                 "% NORMAL=" + NormalChancePercent + "% RAPIDO=" +
                 (100 - SlowChancePercent - NormalChancePercent) + "%.");
+            LogInfo("THE UNRELENTING: ARRANCADAS CONFIGURADAS! ATIVO=" + EnableSuddenBurst +
+                " CHANCE_POR_TENTATIVA=" + BurstChancePercent + "% DURACAO=3-5.5s REAL.");
         }
 
         private static bool Usable(Actor a)
@@ -179,6 +199,121 @@ namespace Arvak.TheUnrelenting
             _traitsAddedByMod.Remove(a);
         }
 
+        // Gerencia APENAS traits introduzidas por este mod: o hospedeiro
+        // nunca perde um Slow/Fast anterior ao periodo de possessao.
+        private bool AddOwnedSpeedTrait(Actor a, string id)
+        {
+            if (!Usable(a)) return false;
+            HashSet<string> owned;
+            if (!_traitsAddedByMod.TryGetValue(a, out owned))
+            {
+                owned = new HashSet<string>();
+                _traitsAddedByMod[a] = owned;
+            }
+            if (a.hasTrait(id)) return owned.Contains(id);
+            if (!MutateTrait(a, "addTrait", id) || !a.hasTrait(id)) return false;
+            owned.Add(id);
+            a.setStatsDirty();
+            return true;
+        }
+
+        private bool RemoveOwnedSpeedTrait(Actor a, string id)
+        {
+            if (a == null) return false;
+            HashSet<string> owned;
+            if (!_traitsAddedByMod.TryGetValue(a, out owned) || !owned.Contains(id))
+                return false; // Nunca tocar em traits que nao sao nossas.
+            if (a.hasTrait(id))
+            {
+                if (!MutateTrait(a, "removeTrait", id) || a.hasTrait(id)) return false;
+            }
+            owned.Remove(id);
+            a.setStatsDirty();
+            return true;
+        }
+
+        private float RandomSeconds(float min, float max)
+        {
+            return min + (float)_random.NextDouble() * (max - min);
+        }
+
+        private void StartSuddenBurst()
+        {
+            if (_burstActive || !Usable(_host) || _currentSpeed == PursuitSpeed.Fast) return;
+
+            bool removedSlow = false;
+            if (_currentSpeed == PursuitSpeed.Slow)
+            {
+                // Para ficar rapido, precisamos liberar o Slow QUE NOS adicionamos.
+                if (!RemoveOwnedSpeedTrait(_host, "slow"))
+                {
+                    LogWarning("THE UNRELENTING: ARRANCADA CANCELADA! Falha ao retirar slow temporario.");
+                    return;
+                }
+                removedSlow = true;
+            }
+
+            if (!AddOwnedSpeedTrait(_host, "fast"))
+            {
+                if (removedSlow && !AddOwnedSpeedTrait(_host, "slow"))
+                    LogWarning("THE UNRELENTING: ARRANCADA: falha ao restaurar slow apos erro de fast.");
+                LogWarning("THE UNRELENTING: ARRANCADA CANCELADA! Trait fast nao foi aplicada.");
+                return;
+            }
+            _burstActive = true;
+            _burstCleanupWarned = false;
+            float duration = RandomSeconds(BurstDurationMin, BurstDurationMax);
+            _burstEndsAt = Time.unscaledTime + duration;
+            LogInfo("THE UNRELENTING: ARRANCADA INICIADA! HOSPEDEIRO_TEMP_ID=" +
+                _host.GetHashCode() + " FORMA=" + GetAssetId(_host) +
+                " VELOCIDADE_ANTERIOR=" + _currentSpeed.ToString().ToUpperInvariant() +
+                " VELOCIDADE_ATUAL=FAST DURACAO_SEGUNDOS=" + duration.ToString("F1"));
+        }
+
+        private void EndSuddenBurst()
+        {
+            if (!_burstActive) return;
+            if (!Usable(_host))
+            {
+                _burstActive = false;
+                return;
+            }
+            // Nao reintroduzimos Slow enquanto nao houver certeza de que Fast saiu.
+            if (!RemoveOwnedSpeedTrait(_host, "fast"))
+            {
+                if (!_burstCleanupWarned)
+                {
+                    LogWarning("THE UNRELENTING: ARRANCADA: nao foi possivel limpar fast; tentando novamente.");
+                    _burstCleanupWarned = true;
+                }
+                return;
+            }
+            if (_currentSpeed == PursuitSpeed.Slow && !AddOwnedSpeedTrait(_host, "slow"))
+                LogWarning("THE UNRELENTING: ARRANCADA: nao foi possivel restaurar slow neste corpo.");
+            LogInfo("THE UNRELENTING: ARRANCADA ENCERRADA! HOSPEDEIRO_TEMP_ID=" +
+                _host.GetHashCode() + " VELOCIDADE_RESTAURADA=" +
+                _currentSpeed.ToString().ToUpperInvariant());
+            _burstActive = false;
+            _burstCleanupWarned = false;
+            _nextBurstCheckAt = Time.unscaledTime + RandomSeconds(NextBurstCheckMin, NextBurstCheckMax);
+        }
+
+        private void UpdateSuddenBurst()
+        {
+            if (!EnableSuddenBurst || !Usable(_host) || !Usable(_target)) return;
+            if (_burstActive)
+            {
+                if (Time.unscaledTime >= _burstEndsAt) EndSuddenBurst();
+                return;
+            }
+            if (Time.unscaledTime < _nextBurstCheckAt) return;
+            _nextBurstCheckAt = Time.unscaledTime + RandomSeconds(NextBurstCheckMin, NextBurstCheckMax);
+            if (_currentSpeed == PursuitSpeed.Fast) return;
+            float distance = _host.distanceToActorTile(_target);
+            if (distance < MinBurstTargetDistance || distance > MaxBurstTargetDistance) return;
+            if (_random.Next(100) < BurstChancePercent) StartSuddenBurst();
+        }
+
         // Leitura defensiva do tipo real do Actor: nenhuma mudanca no asset.
         private static string GetAssetId(Actor actor)
         {
@@ -253,6 +388,9 @@ namespace Arvak.TheUnrelenting
             _host = next;
             _host.cancelAllBeh();
             _currentSpeed = RollSpeed();
+            _burstActive = false; // antiga corrida limpa por CleanupTemporaryTraits(old)
+            _burstCleanupWarned = false;
+            _nextBurstCheckAt = Time.unscaledTime + RandomSeconds(FirstBurstCheckMin, FirstBurstCheckMax);
             ApplyTemporaryTraits(_host, _currentSpeed);
             _nextHostChangeTime = Time.unscaledTime + (isChange ? HostChangeInterval : FirstHostChangeAfter);
             _lastProgressTime = Time.unscaledTime;
@@ -287,6 +425,9 @@ namespace Arvak.TheUnrelenting
             _target = null;
             _killsThisChain = 0;
             _currentSpeed = PursuitSpeed.Normal;
+            _burstActive = false;
+            _burstCleanupWarned = false;
+            _nextBurstCheckAt = 0f;
             _warnedNoHost = false;
         }
 
@@ -302,6 +443,9 @@ namespace Arvak.TheUnrelenting
             _target = null;
             _killsThisChain = 0;
             _currentSpeed = PursuitSpeed.Normal;
+            _burstActive = false;
+            _burstCleanupWarned = false;
+            _nextBurstCheckAt = 0f;
             _warnedNoHost = false;
             _reportedError = false;
         }
@@ -409,6 +553,8 @@ namespace Arvak.TheUnrelenting
                 }
 
                 if (!Usable(_target) || !Usable(_host)) return;
+                // O mesmo hospedeiro pode acelerar inesperadamente.
+                UpdateSuddenBurst();
                 float distance = _host.distanceToActorTile(_target);
                 if (distance <= ContactDistance)
                 {
