@@ -1,54 +1,76 @@
-# The Unrelenting v0.4.0 — The Pursuit (experimental)
+# The Unrelenting v0.5.0 — Silent Steps (teste experimental)
 
-Mod experimental de terror para **WorldBox 0.51.2 build 719** e **NeoModLoader** no Ubuntu.
+Mod para WorldBox 0.51.2 build 719 + NeoModLoader no Ubuntu.
 
-A v0.3.0 foi confirmada no jogo pelo autor. **A v0.4.0 ainda precisa ser testada no WorldBox.**
+## Aviso: use somente um mundo de teste descartavel
+
+Esta versao modifica temporariamente traits de criaturas **que ja existem**.
+O mod TENTA remover suas proprias traits ao encerrar a perseguicao, mas **nao ha
+persistencia/limpeza garantida depois de salvar, fechar e recarregar o mundo**.
+NÃO TESTE em um save importante. O uso de traits pode causar efeitos secundarios
+no proprio jogo (traits opostas, alteracoes de comportamento etc.).
 
 ## O que faz
 
-- Mantem trait `Haunted`, seu ID `ArvakTheUnrelenting_Haunted`, GUID e grupo da v0.3.0.
-- Identifica vitimas a cada ~2 segundos reais e atribui a cada uma um perseguidor aleatorio ja existente.
-- Prefere unidades a ate 55 tiles de distancia; se nao houver, considera criaturas mais distantes (que podem nao encontrar rota).
-- Ao escolher, cancela a rotina atual do perseguidor UMA vez e manda seguir a posicao atual da vitima por `goTo(target.current_tile, false)` a cada ~2 segundos.
-- Loga a distancia na selecao, progresso a cada ~15 segundos reais e quando o perseguidor se aproxima a ~1,5 tiles.
-- Se Haunted for removido ou o alvo desaparecer, interrompe as novas ordens de perseguicao.
-- Se o perseguidor morrer ou ficar Haunted, pode atribuir outro.
+- Preserva a trait Haunted e seu identificador (`ArvakTheUnrelenting_Haunted`).
+- Seleciona perseguidores entre criaturas vivas do mapa.
+- Evita candidatos com Fast, Agile e Plague para reduzir perda acidental de traits
+  opostas ao aplicar Slow e Immortal (nao e garantia completa).
+- Testa aplicar as traits nativas `slow`, `peaceful`, `immortal`, `super_health`.
+  Se um identificador/API falhar, loga falha sem impedir a perseguicao.
+- Guarda quais dessas traits NAO existiam e foram de fato adicionadas, para
+  tentar removê-las quando o alvo deixa de estar Haunted.
+- Continua usando `goTo` e distancia a cada 2 segundos, sem causar danos.
+- Corrige log duplicado de 'ALCANCOU O ALVO': agora aparece no maximo uma vez
+  por associacao alvo/perseguidor.
+- Registra possivel causa de `HAUNTED DEIXOU DE ESTAR ATIVO` como
+  `TRAIT_REMOVIDA`, `MORTE_OU_DESAPARECIMENTO`, `SEM_TILE` ou `FORA_DA_LISTA`.
 
-**Ainda NAO ha**: execucao da vitima, imortalidade, neutralidade completa, lentidao, travessia segura de oceanos, persistencia de pares entre saves, garantia de monopolizar a IA normal. O movimento e experimental; mares e obstaculos podem impedir o trajeto.
+## Limites
+
+- `Peaceful` impede iniciar ataques, MAS nao torna amigavel para todo o mundo;
+  outros ainda podem atacar. `Immortal` nao impede morte em combate.
+- `super_health` aumenta a vida, NAO garante invulnerabilidade.
+- Os modificadores sao visiveis na ficha, entao NAO ha disfarce perfeito ainda.
+- Nao existe execucao por proximidade, travessia de oceano garantida nem
+  restauracao segura depois de restart/reload. Nao e ainda uma release final.
 
 ## Instalacao
 
-1. Feche WorldBox.
-2. Remova a pasta antiga `TheUnrelenting` de `worldbox/Mods` (apenas essa pasta).
-3. Extraia este ZIP e coloque a nova pasta `TheUnrelenting` no mesmo lugar.
-4. Abra WorldBox e confirme The Unrelenting no menu NML.
+1. Feche o WorldBox.
+2. Na pasta `worldbox/Mods/`, remova SOMENTE a pasta antiga `TheUnrelenting`.
+3. Extraia este ZIP e mova a nova pasta `TheUnrelenting` para `worldbox/Mods/`.
+4. Reinicie o WorldBox. Abra um mundo novo descartavel.
 
-## Teste controlado
+## Teste
 
-1. Crie um mapa com terra continua e 10-20 criaturas em uma area relativamente pequena (reduz falhas de caminho).
-2. Aplique `Haunted` em 1 criatura.
-3. Deixe o jogo rodando durante 30-60 segundos reais.
-4. Execute:
+1. Coloque 10 a 20 unidades em uma ilha e aplique Haunted a UMA delas.
+2. Observe se o perseguidor caminha mais lentamente que antes. Ele pode ainda
+   ser atacado (isso e esperado no experimento).
+3. Remova Haunted e aguarde alguns segundos. O mod deve registrar LIMPEZA TRAIT.
+4. No terminal:
 
 ```bash
 grep -nE 'THE UNRELENTING:|error CS[0-9]+|Failed to compile' \
-  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 80
+  "$HOME/.config/unity3d/mkarpenko/WorldBox/Player.log" | tail -n 100
 ```
 
-As mensagens `PERSEGUIDOR ESCOLHIDO`, `PROGRESSO PERSEGUICAO` e possivelmente `PERSEGUIDOR ALCANCOU O ALVO (SEM MATAR)` indicam progresso.
+Procure por `TRAIT TEMPORARIA APLICADA`, `NAO FOI POSSIVEL APLICAR TRAIT`,
+`PERSEGUIDOR ESCOLHIDO`, `PROGRESSO PERSEGUICAO`, `ALCANCOU O ALVO`,
+`HAUNTED DEIXOU` e `LIMPEZA TRAIT`.
 
-**Verificacao critica:** em `PROGRESSO PERSEGUICAO` veja se `DISTANCIA` ficou MENOR que `DISTANCIA_ANTERIOR`. O fato de `goTo` ter sido invocado nao garante deslocamento bem sucedido. Veja tambem se o mundo esta pausado e se o jogo nao esta aguardando loading.
-
-Se um erro ocorrer, envie o arquivo de erro do NeoModLoader ou as ultimas 80 linhas relevantes do Player.log.
+**Cuidado:** nao confunda ter registrado uma tentativa de aplicar trait com
+observar seu efeito. A propria execucao no jogo ainda precisa ser validada.
 
 ## GitHub
 
-- Substituir `Main.cs`, `mod.json`, `README.md`, `LEIA-ME.txt` e `Locales/*.json` pelos arquivos deste ZIP.
-- Commit: `feat: add experimental Haunted pursuer movement`
-- Versao: `v0.4.0` (release so apos teste bem-sucedido).
+- Substituir os arquivos anteriores pelos arquivos da nova pasta.
+- Commit: `feat: test native pursuer traits and improve pursuit lifecycle logs`
+- Tag sugerida apos teste: `v0.5.0`
+- Release publica: somente depois de testar com sucesso e registrar limites.
 
-## Fontes e referencia da API
+## API e fontes
 
-- https://github.com/studiocadogan/SemiAutoActions/blob/main/SemiAutoActionSystem.cs (`Actor.goTo(WorldTile, false)` e `cancelAllBeh()`)
-- https://lous12.github.io/worldbox-modding-docs/quick/actors/ (`distanceToActorTile`)
+- https://lous12.github.io/worldbox-modding-docs/api/runtime-actor/
+- https://the-official-worldbox-wiki.fandom.com/wiki/Creature_Traits
 - https://github.com/WorldBoxOpenMods/ModLoader

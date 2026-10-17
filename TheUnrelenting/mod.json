@@ -2,8 +2,8 @@
   "name": "The Unrelenting",
   "GUID": "Arvak.TheUnrelenting",
   "author": "Arvak",
-  "version": "0.4.0",
-  "description": "The Unrelenting v0.4.0: experimental moving pursuers for Haunted units; no kills yet.",
+  "version": "0.5.0",
+  "description": "The Unrelenting v0.5.0: controlled vanilla-trait test for pursuers; chase without kills.",
   "Dependencies": [],
   "OptionalDependencies": [],
   "IncompatibleWith": []

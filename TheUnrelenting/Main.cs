@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using NeoModLoader.api;
 using UnityEngine;
 
@@ -11,9 +12,16 @@ namespace Arvak.TheUnrelenting
         public const string TraitId = "ArvakTheUnrelenting_Haunted";
         public const string GroupId = "ArvakTheUnrelenting_Group";
 
-        // A v0.4.0 exercita APENAS a navegacao: sem danos, invulnerabilidade ou buffs.
-        // Preferimos candidatos proximos para facilitar o teste. Nao ha ainda
-        // verificacao de ilha, entao mares, paredes ou montanhas podem bloquear.
+        // v0.5.0: teste CONTROLADO com traits vanilla. A combinacao e provisoria;
+        // estes efeitos NAO garantem invulnerabilidade nem imunidade contra hostilidade.
+        // Nao use em saves importantes: o jogo pode salvar modificadores temporarios.
+        private static readonly string[] TestTraits = {
+            "slow", "peaceful", "immortal", "super_health"
+        };
+        // Nao escolha unidades que possam perder Fast/Agile/Plague por opostos.
+        private static readonly string[] OppositeRiskTraits = {
+            "fast", "agile", "plague"
+        };
         private const float MinStartDistance = 4f;
         private const float PreferredMaxDistance = 55f;
         private const float ScanInterval = 2f;
@@ -25,6 +33,9 @@ namespace Arvak.TheUnrelenting
         private readonly Dictionary<Actor, float> _lastLoggedDistance = new Dictionary<Actor, float>();
         private readonly Dictionary<Actor, float> _lastProgressTime = new Dictionary<Actor, float>();
         private readonly HashSet<Actor> _reachedTargets = new HashSet<Actor>();
+        // Guarda SOMENTE traits que nosso mod adicionou. Nao remover traits preexistentes.
+        private readonly Dictionary<Actor, HashSet<string>> _temporaryTraits =
+            new Dictionary<Actor, HashSet<string>>();
         private readonly System.Random _random = new System.Random();
         private object _activeWorldReference;
         private float _scanClock;
@@ -55,21 +66,26 @@ namespace Arvak.TheUnrelenting
             AssetManager.traits.add(haunted);
 
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
-            LogInfo("THE UNRELENTING: PERSEGUICAO EXPERIMENTAL ATIVA (atualizacao a cada 2 segundos; SEM MORTE). ");
+            LogInfo("THE UNRELENTING: V0.5.0 TESTE LENTO/PACIFICO/RESISTENTE ATIVO (SEM MORTE). ");
         }
 
         private void ResetTracking()
         {
+            CleanupAllTemporaryTraits();
             _hauntedUnits.Clear();
             _pursuerByTarget.Clear();
             _noCandidateNotice.Clear();
             _lastLoggedDistance.Clear();
             _lastProgressTime.Clear();
             _reachedTargets.Clear();
+            _temporaryTraits.Clear();
         }
 
         private void ForgetTarget(Actor target)
         {
+            Actor pursuer;
+            if (_pursuerByTarget.TryGetValue(target, out pursuer))
+                CleanupTemporaryTraits(pursuer);
             _pursuerByTarget.Remove(target);
             _noCandidateNotice.Remove(target);
             _lastLoggedDistance.Remove(target);
@@ -80,6 +96,107 @@ namespace Arvak.TheUnrelenting
         private static bool HasUsableTile(Actor actor)
         {
             return actor != null && actor.isAlive() && actor.current_tile != null;
+        }
+
+        // Reflective method dispatch: avoids compile errors when a WorldBox build
+        // changes the signature of addTrait/removeTrait. Failures stay in the log.
+        private static bool InvokeTraitMutation(Actor actor, string methodName, string traitId)
+        {
+            if (actor == null) return false;
+            MethodInfo[] methods = actor.GetType().GetMethods(
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            foreach (MethodInfo method in methods)
+            {
+                if (method.Name != methodName) continue;
+                ParameterInfo[] parameters = method.GetParameters();
+                if (parameters.Length < 1 || parameters[0].ParameterType != typeof(string))
+                    continue;
+
+                object[] args = new object[parameters.Length];
+                args[0] = traitId;
+                bool supported = true;
+                for (int i = 1; i < parameters.Length; i++)
+                {
+                    if (parameters[i].HasDefaultValue)
+                        args[i] = parameters[i].DefaultValue;
+                    else if (parameters[i].ParameterType == typeof(bool))
+                        args[i] = false;
+                    else if (parameters[i].ParameterType.IsValueType)
+                        args[i] = Activator.CreateInstance(parameters[i].ParameterType);
+                    else
+                        supported = false;
+                }
+                if (!supported) continue;
+                try
+                {
+                    method.Invoke(actor, args);
+                    return true;
+                }
+                catch
+                {
+                    // Different overload; test the next one, if any.
+                }
+            }
+            return false;
+        }
+
+        private void ApplyTemporaryTraits(Actor pursuer)
+        {
+            if (!HasUsableTile(pursuer)) return;
+            HashSet<string> added = new HashSet<string>();
+            foreach (string traitId in TestTraits)
+            {
+                if (pursuer.hasTrait(traitId)) continue;
+                bool called = InvokeTraitMutation(pursuer, "addTrait", traitId);
+                if (called && pursuer.hasTrait(traitId))
+                {
+                    added.Add(traitId);
+                    LogInfo("THE UNRELENTING: TRAIT TEMPORARIA APLICADA PERSEGUIDOR_TEMP_ID=" +
+                            pursuer.GetHashCode() + " TRAIT=" + traitId);
+                }
+                else
+                {
+                    LogWarning("THE UNRELENTING: NAO FOI POSSIVEL APLICAR TRAIT=" + traitId +
+                               " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode() +
+                               " (verificar ID/API no log)");
+                }
+            }
+            if (added.Count > 0) _temporaryTraits[pursuer] = added;
+            pursuer.setStatsDirty();
+        }
+
+        private void CleanupTemporaryTraits(Actor pursuer)
+        {
+            if (pursuer == null) return;
+            HashSet<string> added;
+            if (!_temporaryTraits.TryGetValue(pursuer, out added)) return;
+            if (pursuer.isAlive())
+            {
+                foreach (string id in added)
+                {
+                    if (!pursuer.hasTrait(id)) continue;
+                    bool called = InvokeTraitMutation(pursuer, "removeTrait", id);
+                    LogInfo("THE UNRELENTING: LIMPEZA TRAIT=" + id +
+                            " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode() +
+                            " RESULTADO=" + (called && !pursuer.hasTrait(id) ? "OK" : "VERIFICAR"));
+                }
+                pursuer.setStatsDirty();
+            }
+            _temporaryTraits.Remove(pursuer);
+        }
+
+        private void CleanupAllTemporaryTraits()
+        {
+            var units = new List<Actor>(_temporaryTraits.Keys);
+            foreach (Actor actor in units)
+                CleanupTemporaryTraits(actor);
+        }
+
+        private static bool HasOppositeRisk(Actor actor)
+        {
+            foreach (string traitId in OppositeRiskTraits)
+                if (actor.hasTrait(traitId)) return true;
+            return false;
         }
 
         // Reservoir sampling entre candidatos proximos e nao reservados.
@@ -97,7 +214,7 @@ namespace Arvak.TheUnrelenting
             {
                 if (object.ReferenceEquals(candidate, target) ||
                     haunted.Contains(candidate) || reserved.Contains(candidate) ||
-                    !HasUsableTile(candidate))
+                    !HasUsableTile(candidate) || HasOppositeRisk(candidate))
                     continue;
 
                 float distance = candidate.distanceToActorTile(target);
@@ -162,7 +279,11 @@ namespace Arvak.TheUnrelenting
                 {
                     if (!current.Contains(previous))
                     {
-                        LogInfo("THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=" + previous.GetHashCode());
+                        string reason = !previous.isAlive() ? "MORTE_OU_DESAPARECIMENTO" :
+                            (previous.current_tile == null ? "SEM_TILE" :
+                             (!previous.hasTrait(TraitId) ? "TRAIT_REMOVIDA" : "FORA_DA_LISTA"));
+                        LogInfo("THE UNRELENTING: HAUNTED DEIXOU DE ESTAR ATIVO! TEMP_ID=" +
+                                previous.GetHashCode() + " MOTIVO=" + reason);
                         ForgetTarget(previous);
                     }
                 }
@@ -210,6 +331,7 @@ namespace Arvak.TheUnrelenting
                     // Uma unica vez ao escolher: a rotina original pode disputar
                     // o movimento; o goTo sera renovado nas varreduras seguintes.
                     pursuer.cancelAllBeh();
+                    ApplyTemporaryTraits(pursuer);
                 }
 
                 // Reenvia destino movel sem teleporte nem dano. Em alguns casos a
@@ -224,13 +346,14 @@ namespace Arvak.TheUnrelenting
                     float distance = pursuer.distanceToActorTile(target);
                     if (distance <= 1.5f)
                     {
+                        // Emitir uma unica vez por par de perseguidor/alvo. O alvo
+                        // pode afastar-se de novo, mas nao queremos logs repetidos.
                         if (_reachedTargets.Add(target))
                             LogInfo("THE UNRELENTING: PERSEGUIDOR ALCANCOU O ALVO (SEM MATAR)! ALVO_TEMP_ID=" +
                                     target.GetHashCode() + " PERSEGUIDOR_TEMP_ID=" + pursuer.GetHashCode());
                     }
                     else
                     {
-                        _reachedTargets.Remove(target);
                         pursuer.goTo(target.current_tile, false);
                     }
 

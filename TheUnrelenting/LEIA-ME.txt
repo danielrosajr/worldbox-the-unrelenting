@@ -1,4 +1,4 @@
-The Unrelenting v0.4.0 (TESTE DE PERSEGUICAO)
-Instalacao, teste e GitHub: leia README.md
-A v0.3.0 foi validada em jogo; a v0.4.0 ainda NAO foi testada.
-NAO mata ninguem. Apenas tenta fazer o perseguidor se aproximar da vitima.
+The Unrelenting v0.5.0 — Silent Steps
+
+Veja README.md para instrucoes.
+AVISO: use somente um mundo novo DESCARTAVEL: esta versao aplica traits temporarias a criaturas ja existentes e a limpeza nao e garantida apos salvar/recarregar.
