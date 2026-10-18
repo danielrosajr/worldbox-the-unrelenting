@@ -1,4 +1,35 @@
 {
+  "QuickStart": [
+    {
+      "Id": "GameplayPreset",
+      "Type": "SLIDER",
+      "FloatVal": 0.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 4.0
+    },
+    {
+      "Id": "ShowQuickPanel",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "ShowCurseStatus",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "EnableSubtleVisualWarning",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "VisualWarningRadius",
+      "Type": "SLIDER",
+      "FloatVal": 12.0,
+      "MinFloatVal": 4.0,
+      "MaxFloatVal": 25.0
+    }
+  ],
   "Origins": [
     {
       "Id": "EnableRandomOrigins",
@@ -301,7 +332,7 @@
     {
       "Id": "MusicDuckingPercent",
       "Type": "SLIDER",
-      "FloatVal": 90.0,
+      "FloatVal": 96.0,
       "MinFloatVal": 0.0,
       "MaxFloatVal": 98.0
     },

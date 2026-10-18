@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.13.6 - Immersion Fixes: WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
+    // v0.14.0 - Dread Modes: WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -24,6 +24,74 @@ namespace Arvak.TheUnrelenting
         // Trait temporaria e nao selecionavel. Registrada apos AssetManager.traits.add().
         // Atributo fixo proposital para nao mutar o mesmo asset global em runtime.
         private const float PunishingRushSpeedBonus = 75f;
+
+        // Menu rapido: os ajustes avancados so governam tudo no modo Personalizado (4).
+        // Manual (0) preserva o principio opt-in do Origins.
+        private const string QuickGroup = "QuickStart";
+        private const string QuickPresetKey = "GameplayPreset";
+        private const string QuickPanelKey = "ShowQuickPanel";
+        private const string QuickStatusKey = "ShowCurseStatus";
+        private const string QuickVisualKey = "EnableSubtleVisualWarning";
+        private const string QuickVisualRadiusKey = "VisualWarningRadius";
+        private int _quickPreset = 0;
+        private bool _quickPanel;
+        private bool _showCurseStatus = true;
+        private bool _enableVisualWarning;
+        private float _visualWarningRadius = 12f;
+        private float _nextQuickSettingsAt;
+        private bool _quickSettingsWarning;
+        private float _nextVisualCheck;
+        private bool _visualControlled;
+        private GameObject _visualVignetteCanvas;
+        private object _visualVignetteRaw;
+        private PropertyInfo _visualVignetteColor;
+        private Texture2D _visualVignetteTexture;
+        private bool _vignetteLogError;
+        private float _nextMusicProgressLog;
+        private float _deathUiDiagnosticAt;
+        private string QuickName(int preset)
+        {
+            switch (preset) { case 0: return "MANUAL"; case 1: return "REALISTA";
+                case 2: return "NORMAL"; case 3: return "NIGHTMARE"; default: return "PERSONALIZADO"; }
+        }
+        private void ReadQuickSettings()
+        {
+            try
+            {
+                ModConfig cfg = GetConfig();
+                if (cfg == null) return;
+                var g = cfg[QuickGroup];
+                int preset = Mathf.Clamp(Convert.ToInt32(g[QuickPresetKey].GetValue()), 0, 4);
+                if (preset != _quickPreset)
+                    LogInfo("THE UNRELENTING: PRESET ALTERADO! ANTERIOR=" + QuickName(_quickPreset) + " ATUAL=" + QuickName(preset));
+                _quickPreset = preset;
+                _quickPanel = (bool)g[QuickPanelKey].GetValue();
+                _showCurseStatus = (bool)g[QuickStatusKey].GetValue();
+                _enableVisualWarning = (bool)g[QuickVisualKey].GetValue();
+                _visualWarningRadius = Mathf.Clamp(Convert.ToSingle(g[QuickVisualRadiusKey].GetValue()), 4f, 25f);
+                _quickSettingsWarning = false;
+            }
+            catch (Exception e)
+            {
+                // Mod instalado sem o novo default_config: preservar comportamento anterior.
+                _quickPreset = 4;
+                if (!_quickSettingsWarning)
+                {
+                    LogWarning("THE UNRELENTING: QUICKSTART INDISPONIVEL; MODO PERSONALIZADO! " + e.Message);
+                    _quickSettingsWarning = true;
+                }
+            }
+        }
+        private void SetQuickItem(string key, object value)
+        {
+            try
+            {
+                ModConfig cfg = GetConfig();
+                if (cfg != null) cfg[QuickGroup][key].SetValue(value, true);
+                ReadQuickSettings();
+            }
+            catch (Exception e) { LogWarning("THE UNRELENTING: QUICKSTART MUDANCA FALHOU! " + e.Message); }
+        }
 
         private const float ScanInterval = 2f;
         private const float ContactDistance = 1.5f;
@@ -337,6 +405,13 @@ namespace Arvak.TheUnrelenting
                     LogWarning("THE UNRELENTING: BLOODLINE CONFIG INDISPONIVEL! TRANSMISSAO DESATIVADA: " + e.Message);
                     _bloodlineConfigWarned = true;
                 }
+            }
+            if (_quickPreset != 4)
+            {
+                result.Transfer = _quickPreset >= 1;
+                result.Chance = _quickPreset == 1 ? 25f : (_quickPreset == 2 ? 65f : 100f);
+                result.Generations = _quickPreset == 1 ? 1 : 3;
+                result.Verbose = false;
             }
             return result;
         }
@@ -730,6 +805,15 @@ namespace Arvak.TheUnrelenting
                     LogWarning("THE UNRELENTING: IMMERSION CONFIG INDISPONIVEL, SONS E SUSTOS DESLIGADOS! " + e.Message);
                     _immersionConfigWarned = true;
                 }
+            }
+            if (_quickPreset >= 1 && _quickPreset <= 3)
+            {
+                // Nunca forcar o jumpscare. Mantem opt-in de acessibilidade.
+                o.PresenceCue = _quickPreset != 0;
+                o.DuckMusic = _quickPreset != 0;
+                o.DuckMusicPercent = _quickPreset == 1 ? 94f : (_quickPreset == 2 ? 96f : 98f);
+                o.MusicFadeSeconds = _quickPreset == 3 ? 2.5f : 4f;
+                o.PresenceChance = _quickPreset == 1 ? 15f : (_quickPreset == 2 ? 25f : 40f);
             }
             return o;
         }
@@ -1605,6 +1689,15 @@ namespace Arvak.TheUnrelenting
                 }
                 catch { _unityMusicSources.RemoveAt(i); }
             }
+            if (_musicDucked && _musicFadeWanted && _immersion.Verbose &&
+                Time.unscaledTime >= _nextMusicProgressLog)
+            {
+                _nextMusicProgressLog = Time.unscaledTime + 6f;
+                LogInfo("THE UNRELENTING: IMMERSION MUSICA FADE EM ANDAMENTO! " +
+                    "VOLUME_ATUAL=" + _musicCurrentVolume.ToString("F3") +
+                    " VOLUME_ALVO=" + (_originalMusicVolume * ratio).ToString("F3") +
+                    " PRESET=" + QuickName(_quickPreset));
+            }
             if (!_musicFadeWanted && done)
             {
                 if (_musicDucked) SetBusMusicVolume(_musicBus, _originalMusicVolume);
@@ -1720,7 +1813,7 @@ namespace Arvak.TheUnrelenting
                     throw new InvalidOperationException("Canvas nao oferece renderMode/sortingOrder");
                 // RenderMode.ScreenSpaceOverlay = 0
                 renderMode.SetValue(canvas, Enum.ToObject(renderMode.PropertyType, 0), null);
-                sortingOrder.SetValue(canvas, 32760, null);
+                sortingOrder.SetValue(canvas, 32767, null);
                 if (overrideSorting != null) overrideSorting.SetValue(canvas, true, null);
                 GameObject image = new GameObject("TheUnrelenting_JumpscareImage", new Type[] { rectType });
                 image.transform.SetParent(root.transform, false);
@@ -1794,27 +1887,156 @@ namespace Arvak.TheUnrelenting
             _jumpscareUntil = Time.unscaledTime + _immersion.JumpscareDuration;
             bool canvas3D = EnsureJumpscareOverlay();
             SetJumpscareOverlayVisible(canvas3D);
+            _deathUiDiagnosticAt = Time.unscaledTime + 0.25f;
             // Distorted scream normalizado: impedir estourar os ouvidos.
             bool played = TryPlayWav("death_sting.wav", _immersion.SoundVolume / 100f * 0.65f);
             LogInfo("THE UNRELENTING: IMMERSION JUMPSCARE EXIBIDO! VITIMA_TEMP_ID=" + victim.GetHashCode() +
                 " SOM_REPRODUZIDO=" + played + " CANVAS_3D=" + canvas3D + " TOTAL=" + _jumpscareCount);
         }
 
+        private void LateUpdate()
+        {
+            // Worldfall cria interfaces e cameras durante a transicao para a morte.
+            // Reforcar overlay apos Update sem modificar a tela de morte do Worldfall.
+            if (_jumpscareTexture == null || Time.unscaledTime >= _jumpscareUntil) return;
+            if (EnsureJumpscareOverlay())
+            {
+                SetJumpscareOverlayVisible(true);
+                _jumpscareCanvasRoot.transform.SetAsLastSibling();
+            }
+            if (_deathUiDiagnosticAt > 0f && Time.unscaledTime >= _deathUiDiagnosticAt)
+            {
+                _deathUiDiagnosticAt = 0f;
+                LogInfo("THE UNRELENTING: IMMERSION DEATH OVERLAY ATIVO APOS TRANSICAO! " +
+                    "CANVAS=" + (_jumpscareCanvasRoot != null && _jumpscareCanvasRoot.activeSelf) +
+                    " RESTANTE_SEG=" + Mathf.Max(0f, _jumpscareUntil - Time.unscaledTime).ToString("F2"));
+            }
+        }
+
+        // Sem strobo: pulso de baixa intensidade e frequencia lenta, apenas
+        // controlando a propria vitima. Sem sinais quando nao existe prova.
+        private void UpdateVisualWarning()
+        {
+            bool enabled = _enableVisualWarning &&
+                Usable(_host) && Usable(_target) &&
+                _host.distanceToActorTile(_target) <= _visualWarningRadius;
+            if (!enabled) { _visualControlled = false; SetVignetteVisible(false, 0f); return; }
+            if (Time.unscaledTime >= _nextVisualCheck)
+            {
+                _nextVisualCheck = Time.unscaledTime + 1f;
+                _visualControlled = IsPlayerControlling(_target);
+            }
+            if (!_visualControlled) { SetVignetteVisible(false, 0f); return; }
+            float pulse = 0.06f + 0.06f * (0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 1.4f));
+            SetVignetteVisible(true, pulse);
+        }
+        private void SetVignetteVisible(bool visible, float alpha)
+        {
+            if (!visible && _visualVignetteCanvas == null) return;
+            if (visible && _visualVignetteCanvas == null)
+            {
+                GameObject root = null;
+                try
+                {
+                    Type canvasType = FindLoadedType("UnityEngine.Canvas");
+                    Type rawType = FindLoadedType("UnityEngine.UI.RawImage");
+                    Type rectType = FindLoadedType("UnityEngine.RectTransform");
+                    if (canvasType == null || rawType == null || rectType == null) return;
+                    _visualVignetteTexture = new Texture2D(64, 64);
+                    Color[] pixels = new Color[64 * 64];
+                    for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++)
+                    {
+                        float nx = (x - 31.5f) / 31.5f, ny = (y - 31.5f) / 31.5f;
+                        float edge = Mathf.Clamp01((Mathf.Max(Mathf.Abs(nx), Mathf.Abs(ny)) - 0.34f) / 0.66f);
+                        pixels[y * 64 + x] = new Color(0.40f, 0.02f, 0.03f, edge * edge);
+                    }
+                    _visualVignetteTexture.SetPixels(pixels);
+                    _visualVignetteTexture.Apply();
+                    root = new GameObject("TheUnrelenting_SubtlePresenceOverlay", new Type[] { rectType });
+                    object canvas = root.AddComponent(canvasType);
+                    canvasType.GetProperty("renderMode").SetValue(canvas, Enum.ToObject(canvasType.GetProperty("renderMode").PropertyType, 0), null);
+                    canvasType.GetProperty("sortingOrder").SetValue(canvas, 32000, null);
+                    GameObject img = new GameObject("TheUnrelenting_Vignette", new Type[] { rectType });
+                    img.transform.SetParent(root.transform, false);
+                    object raw = img.AddComponent(rawType);
+                    rawType.GetProperty("texture").SetValue(raw, _visualVignetteTexture, null);
+                    rawType.GetProperty("raycastTarget").SetValue(raw, false, null);
+                    _visualVignetteColor = rawType.GetProperty("color");
+                    Component rect = img.GetComponent(rectType);
+                    rectType.GetProperty("anchorMin").SetValue(rect, Vector2.zero, null);
+                    rectType.GetProperty("anchorMax").SetValue(rect, Vector2.one, null);
+                    rectType.GetProperty("offsetMin").SetValue(rect, Vector2.zero, null);
+                    rectType.GetProperty("offsetMax").SetValue(rect, Vector2.zero, null);
+                    UnityEngine.Object.DontDestroyOnLoad(root);
+                    _visualVignetteCanvas = root; _visualVignetteRaw = raw;
+                    LogInfo("THE UNRELENTING: PRESENCA VISUAL SUTIL PREPARADA!");
+                }
+                catch (Exception e)
+                {
+                    if (root != null) UnityEngine.Object.Destroy(root);
+                    if (!_vignetteLogError) { LogWarning("THE UNRELENTING: VIGNETTE INDISPONIVEL! " + e.Message); _vignetteLogError = true; }
+                    return;
+                }
+            }
+            if (_visualVignetteCanvas == null) return;
+            _visualVignetteCanvas.SetActive(visible);
+            if (visible && _visualVignetteColor != null && _visualVignetteRaw != null)
+            {
+                try { _visualVignetteColor.SetValue(_visualVignetteRaw, new Color(1f, 1f, 1f, alpha), null); }
+                catch { }
+            }
+        }
+        private void DestroyVignette()
+        {
+            if (_visualVignetteCanvas != null) UnityEngine.Object.Destroy(_visualVignetteCanvas);
+            if (_visualVignetteTexture != null) UnityEngine.Object.Destroy(_visualVignetteTexture);
+            _visualVignetteCanvas = null; _visualVignetteTexture = null;
+            _visualVignetteRaw = null; _visualVignetteColor = null;
+        }
+
         private void OnDisable()
         {
             RestoreMusicDuckingImmediately();
             DestroyJumpscareOverlay();
+            DestroyVignette();
         }
 
         private void OnGUI()
         {
-            if (_jumpscareTexture != null && Time.unscaledTime < _jumpscareUntil && !_jumpscareCanvasVisible)
+            // Dupla camada SOMENTE durante morte pela entidade/controlada ou preview:
+            // Worldfall pode desenhar sua DeathScreen via IMGUI apos o Canvas.
+            if (_jumpscareTexture != null && Time.unscaledTime < _jumpscareUntil)
             {
-                GUI.depth = -999;
-                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), _jumpscareTexture, ScaleMode.ScaleAndCrop);
+                GUI.depth = -32000;
+                GUI.color = Color.white;
+                GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height),
+                    _jumpscareTexture, ScaleMode.ScaleAndCrop);
                 return;
             }
             if (Time.unscaledTime < _jumpscareUntil) return;
+            if (World.world != null && _showCurseStatus)
+            {
+                GUI.depth = -7000;
+                string curse = _targetQueue.Count > 0 ? "MALDICAO ATIVA (" + _targetQueue.Count + ")" : "SEM VITIMA HAUNTED";
+                string next = _originScheduled && _quickPreset != 0 ?
+                    " | Tentativa em ~" + Mathf.CeilToInt(Mathf.Max(0f, _nextOriginAttemptAt - Time.unscaledTime)) + "s" : "";
+                GUI.Box(new Rect(10, 10, 390, 48), "THE UNRELENTING  |  " + QuickName(_quickPreset));
+                GUI.Label(new Rect(21, 31, 380, 22), curse + next);
+            }
+            if (_quickPanel)
+            {
+                GUI.depth = -7100;
+                GUI.Box(new Rect(10, 68, 396, 212), "THE UNRELENTING / INICIO RAPIDO");
+                GUI.Label(new Rect(23, 94, 380, 42), "Escolha um modo. Detalhes antigos somente em PERSONALIZADO.");
+                string[] names = { "MANUAL", "REALISTA", "NORMAL", "NIGHTMARE", "PERSONALIZADO" };
+                for (int i = 0; i < 5; i++)
+                {
+                    int x = i % 2, y = i / 2;
+                    if (GUI.Button(new Rect(23 + x * 180, 124 + y * 35, 173, 30),
+                        (i == _quickPreset ? "* " : "") + names[i])) SetQuickItem(QuickPresetKey, (float)i);
+                }
+                if (GUI.Button(new Rect(318, 71, 78, 25), "Fechar")) SetQuickItem(QuickPanelKey, false);
+            }
             if (!_immersion.DiagnosticHud || World.world == null) return;
             GUI.depth = -998;
             GUI.Box(new Rect(10, 10, 315, 139), "THE UNRELENTING / DIAGNOSTICS");
@@ -1884,7 +2106,7 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.13.6 IMMERSION FIXES + SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.14.0 DREAD MODES + SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
             LogInfo("THE UNRELENTING: IMMERSION: WorldPace Bridge experimental; controle exato via _possessed:Actor e diagnosticos via VerboseImmersionLogs.");
             LoadImmersionArt();
@@ -1995,6 +2217,13 @@ namespace Arvak.TheUnrelenting
                     _warnedOriginSettings = true;
                 }
             }
+            if (_quickPreset != 4)
+            {
+                options.TestMode = false; options.Repeat = true;
+                options.Enabled = _quickPreset != 0;
+                options.Chance = _quickPreset == 1 ? 0.5f : (_quickPreset == 2 ? 1.5f : 5f);
+                options.Interval = _quickPreset == 1 ? 600f : (_quickPreset == 2 ? 180f : 90f);
+            }
             return options;
         }
 
@@ -2028,6 +2257,11 @@ namespace Arvak.TheUnrelenting
                         e.GetType().Name + ": " + e.Message);
                     _witnessConfigWarned = true;
                 }
+            }
+            if (_quickPreset != 4)
+            {
+                options.Tracking = true;
+                options.Transfer = _quickPreset >= 1;
             }
             return options;
         }
@@ -2063,6 +2297,14 @@ namespace Arvak.TheUnrelenting
                         e.GetType().Name + ": " + e.Message);
                     _traumaConfigWarned = true;
                 }
+            }
+            if (_quickPreset != 4)
+            {
+                opts.Tracking = true;
+                opts.Transfer = _quickPreset != 0;
+                opts.OrdinaryDeaths = _quickPreset >= 2;
+                opts.Chance = _quickPreset == 1 ? 6f : (_quickPreset == 2 ? 15f : 35f);
+                opts.Cooldown = _quickPreset == 3 ? 90f : 180f;
             }
             return opts;
         }
@@ -2142,6 +2384,14 @@ namespace Arvak.TheUnrelenting
                         e.GetType().Name + ": " + e.Message);
                     _antiKiteConfigWarned = true;
                 }
+            }
+            if (_quickPreset >= 1 && _quickPreset <= 3)
+            {
+                result.Enabled = true;
+                result.Chance = _quickPreset == 1 ? 3f : (_quickPreset == 2 ? 10f : 30f);
+                result.Seconds = _quickPreset == 3 ? 18f : 30f;
+                result.RandomBurstEnabled = _quickPreset != 0;
+                result.RandomBurstChance = _quickPreset == 1 ? 2f : (_quickPreset == 2 ? 5f : 15f);
             }
             return result;
         }
@@ -3342,7 +3592,11 @@ namespace Arvak.TheUnrelenting
         private void ResetForWorld()
         {
             RestoreMusicDuckingImmediately();
-            DestroyJumpscareOverlay();
+            DestroyVignette();
+            // A tela 3D do Worldfall pode alterar mundo/camera logo depois de morrer.
+            // Manter o susto atual ate o prazo terminar; nunca iniciar outro por morte comum.
+            if (Time.unscaledTime >= _jumpscareUntil)
+                DestroyJumpscareOverlay();
             _presenceTrackedTarget = null;
             _presenceNearSince = -1f;
             _nextPresenceSoundAt = 0f;
@@ -3354,7 +3608,7 @@ namespace Arvak.TheUnrelenting
             _lastAudioPreviewTrigger = 0;
             _immersionPreviewPollClock = 0f;
             _nextUnityMusicProbeAt = 0f;
-            _jumpscareUntil = 0f;
+            if (Time.unscaledTime >= _jumpscareUntil) _jumpscareUntil = 0f;
             _lastWitnessSummary = null;
             _lastTraumaSummary = null;
             _controlWarningLogged = false;
@@ -3423,6 +3677,12 @@ namespace Arvak.TheUnrelenting
 
         private void Update()
         {
+            // QuickStart: valor salvo pelo NML e presets aplicados em runtime.
+            if (Time.unscaledTime >= _nextQuickSettingsAt)
+            {
+                _nextQuickSettingsAt = Time.unscaledTime + 0.35f;
+                ReadQuickSettings();
+            }
             // Previews: 0.2s em vez de 2s, para nao perder toggles rapidos.
             _immersionPreviewPollClock += Time.unscaledDeltaTime;
             if (_immersionPreviewPollClock >= 0.2f)
@@ -3434,6 +3694,7 @@ namespace Arvak.TheUnrelenting
                 CleanPlayedSounds();
             }
             UpdateJumpscareOverlay();
+            UpdateVisualWarning();
             UpdateMusicFade();
             _scanClock += Time.unscaledDeltaTime;
             if (_scanClock < ScanInterval)

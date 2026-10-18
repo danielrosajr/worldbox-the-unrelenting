@@ -301,3 +301,28 @@ Commit: `fix: detect Worldfall possession through WorldPace actor reference`
 - Music fade: MusicDuckingPercent up to 98% (default 90% for new configs), MusicFadeSeconds 0.5-12s. Controls FMOD music bus, and clearly identified Unity AudioSource music sources; restores volumes when safe.
 - Audio playback, 3D overlay and music behavior require in-game validation; do not use important saves for testing.
 - Commit: fix: overlay Worldfall death jumpscare and improve music and audio previews
+
+
+## v0.14.0 - Dread Modes
+
+Presets na primeira secao **01 - Inicio Rapido**:
+
+| Numero | Modo | O que faz |
+|---|---|---|
+| 0 | Manual (default) | Origens automaticas e transmissoes desligadas; Haunted manual funciona |
+| 1 | Realista | Origens 0,5%/600s; trauma raro; heranca e Witness com regras conservadoras |
+| 2 | Normal | Origens 1,5%/180s; trauma moderado; movimentacao equilibrada |
+| 3 | Nightmare | Origens 5%/90s; mais transmissao e arrancadas |
+| 4 | Personalizado | Usa integralmente os ajustes das secoes avancadas, como ate v0.13.6 |
+
+Os presets NAO escrevem sobre as configuracoes avancadas; sao overrides enquanto estao selecionados. O jumpscare exige ativacao explicita em Immersion.
+
+O painel opcional pode ser ligado na mesma secao e fechado sem abrir NML.
+
+Sinal visual suave: vinheta vermelha com pulso lento (nao flickering/flash), desligado por padrao; exige vitima realmente controlada via Worldfall e proximidade.
+
+Overlay da morte do Worldfall: tela dupla com Canvas+IMGUI, prioridade maxima, retries em LateUpdate e resistencia a troca de mundo/camera por poucos segundos. IMPORTANTE: nao existe API publica de substituicao da death screen; ainda e experimental e nao substitui a tela de morte do Worldfall. Mortes comuns nao ativam o susto.
+
+Sons e musics: presets usam 94/96/98% de reducao de musica e fade de 4s (2,5s Nightmare). So FMOD bus:/Music e AudioSources identificados como musica; se o Worldfall usar fonte de musica nao identificada, ela nao sera alterada.
+
+Commit: feat: add quick horror presets, curse status and immersive Worldfall death overlay

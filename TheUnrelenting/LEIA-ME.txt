@@ -26,3 +26,10 @@ Audio em mod apenas com direitos de uso adequados.
 - Music fade: MusicDuckingPercent up to 98% (default 90% for new configs), MusicFadeSeconds 0.5-12s. Controls FMOD music bus, and clearly identified Unity AudioSource music sources; restores volumes when safe.
 - Audio playback, 3D overlay and music behavior require in-game validation; do not use important saves for testing.
 - Commit: fix: overlay Worldfall death jumpscare and improve music and audio previews
+
+
+v0.14.0 - INICIO RAPIDO: clique nas configuracoes do NeoModLoader > 01 Inicio Rapido. Selecione 0 Manual, 1 Realista, 2 Normal, 3 Nightmare ou 4 Personalizado. Presets alteram valores efetivos SEM apagar o que voce configurou no modo Personalizado.
+Status simples pode mostrar se existe Haunted sem revelar o perseguidor. Sinal visual suave opcional, sem strobe.
+Para testes da morte 3D, o overlay em Canvas + IMGUI e experimental. Nao modifica a tela de morte de Worldfall ou mortes comuns.
+
+Commit: feat: add quick horror presets, curse status and immersive Worldfall death overlay
