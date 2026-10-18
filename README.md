@@ -194,6 +194,23 @@ Inspired by supernatural pursuit and psychological horror, including the atmosph
 
 The mod uses custom graphics and optional audio effects. **Redistribution rights for some supplied sound-effect files have not been verified.** Confirm licensing or replace those files with properly licensed alternatives **before publishing them in a public release or repository**.
 
+## Audio Credits & Attribution
+
+The Unrelenting features horror sound effects adapted for use as proximity warnings, supernatural whispers, creature growls, and death sequences.
+
+Special thanks to the creators of the following audio resources:
+
+- **Near-Entity Sound Cue** — [YouTube Source](https://www.youtube.com/watch?v=QoZzU8ptVWw)
+- **Creepy Monster Growl Sound Effect** — [Distorted Room](https://www.youtube.com/watch?v=6LTCdKeNyFI)
+- **Distorted Scream 2** — [YouTube Source](https://www.youtube.com/watch?v=X5C8BsnHTdQ)
+- **Horror Sound Effect 3 — Whispers** — [YouTube Source](https://www.youtube.com/watch?v=3vhK-c1Xcn8)
+- **Horror Sound Effect — Voices (Whispers)** — [YouTube Source](https://www.youtube.com/watch?v=yPKM7aRr52I)
+- **Four Voices Whispering** — [WXYZVNNE](https://www.youtube.com/watch?v=7JOEKMiHJn0)
+
+These links represent possible original sources used during development. Some audio files have been edited, shortened, and volume-adjusted for gameplay.
+
+**Copyright Notice:** All third-party audio remains the property of its respective rights holders. Attribution does not imply ownership, endorsement, or permission to redistribute. Usage rights are subject to verification, and audio assets requiring authorization must not be included in public releases without the necessary permissions.
+
 No source-code license is implied by this README. Check for a separate `LICENSE` file before assuming reuse or redistribution permissions.
 
 ---
