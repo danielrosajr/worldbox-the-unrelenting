@@ -112,6 +112,44 @@
       "Id": "VerbosePursuitLogs",
       "Type": "SWITCH",
       "BoolVal": false
+    },
+    {
+      "Id": "EnableNearbyBodyHops",
+      "Type": "SWITCH",
+      "BoolVal": true
+    },
+    {
+      "Id": "NearbyBodyHopChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 12.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
+    },
+    {
+      "Id": "NearbyBodyHopRadiusTiles",
+      "Type": "SLIDER",
+      "FloatVal": 5.0,
+      "MinFloatVal": 2.0,
+      "MaxFloatVal": 8.0
+    },
+    {
+      "Id": "MinimumBodyTenureSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 45.0,
+      "MinFloatVal": 10.0,
+      "MaxFloatVal": 180.0
+    },
+    {
+      "Id": "EnableRareRemoteRescue",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "RemoteRescueChancePercent",
+      "Type": "SLIDER",
+      "FloatVal": 1.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
     }
   ],
   "AntiKite": [

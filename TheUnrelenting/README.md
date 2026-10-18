@@ -303,7 +303,7 @@ Commit: `fix: detect Worldfall possession through WorldPace actor reference`
 - Commit: fix: overlay Worldfall death jumpscare and improve music and audio previews
 
 
-## v0.14.0 - Dread Modes
+## v0.14.1 - Dread Modes
 
 Presets na primeira secao **01 - Inicio Rapido**:
 
@@ -326,3 +326,30 @@ Overlay da morte do Worldfall: tela dupla com Canvas+IMGUI, prioridade maxima, r
 Sons e musics: presets usam 94/96/98% de reducao de musica e fade de 4s (2,5s Nightmare). So FMOD bus:/Music e AudioSources identificados como musica; se o Worldfall usar fonte de musica nao identificada, ela nao sera alterada.
 
 Commit: feat: add quick horror presets, curse status and immersive Worldfall death overlay
+
+
+## v0.14.1 — The Patient Hunter
+
+**Main change:** the entity no longer switches to a random host every ~22–32 real seconds. It remains in the same body and may possess a creature **only when that creature enters a short encounter radius**, after a minimum tenure and one probability roll per encounter. It therefore feels more like one being pursuing its victim, with occasional unsettling close-range form swaps.
+
+**Isolation as strategy:** Body hopping across oceans is OFF in Manual, Realistic and Normal presets. A victim separated by water can survive as long as the path remains blocked. The entity itself does not gain universal water-walking or teleporting abilities. Optional, extremely rare distant rescue is active in Nightmare (2% per eligible check, max once per 90 real seconds, only after the host truly stops moving and stops approaching the target). Custom mode uses its own toggle and chance; default OFF.
+
+**Host policies by preset**
+
+| Preset | Local encounter roll | Min time in host | Local radius | Remote rescue |
+| --- | ---: | ---: | ---: | --- |
+| Manual | 12% | 45s | 5 tiles | Off |
+| Realistic | 7% | 65s | 5 tiles | Off |
+| Normal | 12% | 45s | 5 tiles | Off |
+| Nightmare | 20% | 28s | 7 tiles | 2% after a true prolonged stall |
+| Custom | Configurable (default 12%) | Configurable (default 45s) | Configurable (default 5) | Off by default; optional 1% |
+
+**AI focus:** more frequent cancellation of host distractions (`cancelAllBeh`) with immediate target navigation. This is an attempt to reduce `fleeing`, sleeping and wandering; the game may still apply its native AI between mod updates. We intentionally did NOT globally replace WorldBox AI assets, jobs or pathfinding.
+
+**Testing:** Set the preset to Normal, put victim and one pursuer candidate on separate islands with no other eligible creatures near the target; the current host should not be rescued remotely. Then add a third creature close to the host, leave it 45+ real seconds, and walk it in/out of a 5-tile radius until an encounter roll succeeds. Activate `VerbosePursuitLogs` in Custom mode to inspect rolls.
+
+**Useful log terms:** `BODY-HOP ENCONTRO`, `BODY-HOP TROCA POR ENCONTRO`, `BODY-HOP RESGATE REMOTO`, `PURSUIT FOCO REFORCADO`, `error CS`.
+
+**Compatibility:** The Witness, Trauma, Bloodline, Anti-Kite, origins, audio and 2D/3D Worldfall immersion are inherited from v0.14.0. Use disposable test worlds, and back up important saves before changing mods.
+
+**GitHub commit:** `feat: make possession encounter-based and preserve island isolation`

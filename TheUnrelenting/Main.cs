@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.14.0 - Dread Modes: WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
+    // v0.14.1 - The Patient Hunter: WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -98,11 +98,10 @@ namespace Arvak.TheUnrelenting
         private const float MinStartDistance = 4f;
         private const float PreferMaxDistance = 50f;
         private const float ProgressLogInterval = 15f;
-        private const float FirstHostChangeAfter = 22f;
-        private const float HostChangeInterval = 32f;
-        private const float MinHostHopDistance = 3f;
-        private const float MaxHostHopDistance = 24f;
-        private const bool EnableHostHopping = true;
+        // Trocas naturais so acontecem por proximidade com OUTRO ator existente.
+        // Nao ha mais temporizador que teleporta a entidade para outro corpo.
+        // Se um oceano isolar a vitima, ela pode ficar segura enquanto isolada.
+        private const float MinHostHopDistance = 1f;
         // Probabilidades em porcentagem: lento 50%, normal 35%, rapido 15%.
         // O modo e sorteado novamente ao assumir outro hospedeiro.
         private const int SlowChancePercent = 50;
@@ -185,6 +184,10 @@ namespace Arvak.TheUnrelenting
         private float _lastProgressTime;
         private float _lastDistance;
         private float _nextHostChangeTime;
+        private readonly HashSet<Actor> _hostEncounteredActors = new HashSet<Actor>();
+        private float _nextRemoteRescueRollAt;
+        private object _hostLastObservedTile;
+        private float _lastHostTileChangeAt;
         private bool _reportedError;
         private bool _warnedNoHost;
         private int _killsThisChain;
@@ -204,6 +207,12 @@ namespace Arvak.TheUnrelenting
         private const string CfgRescue = "EnableStuckRescue";
         private const string CfgStuckSeconds = "StuckThresholdSeconds";
         private const string CfgPursuitLogs = "VerbosePursuitLogs";
+        private const string CfgLocalHops = "EnableNearbyBodyHops";
+        private const string CfgLocalChance = "NearbyBodyHopChancePercent";
+        private const string CfgLocalRadius = "NearbyBodyHopRadiusTiles";
+        private const string CfgMinHostTenure = "MinimumBodyTenureSeconds";
+        private const string CfgRemoteHops = "EnableRareRemoteRescue";
+        private const string CfgRemoteChance = "RemoteRescueChancePercent";
         private struct PursuitOptions
         {
             public bool Adaptive;
@@ -211,6 +220,12 @@ namespace Arvak.TheUnrelenting
             public bool Rescue;
             public float StuckSeconds;
             public bool Verbose;
+            public bool LocalHops;
+            public float LocalChance;
+            public float LocalRadius;
+            public float MinimumTenure;
+            public bool RemoteHops;
+            public float RemoteChance;
         }
         private float _nextMotionTickAt;
         private float _nextMoveCommandAt;
@@ -2106,7 +2121,9 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.14.0 DREAD MODES + SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.14.1 THE PATIENT HUNTER + DREAD MODES + SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
+            LogInfo("THE UNRELENTING: BODY-HOP NOVA LOGICA! TROCA=ENCONTRO_PROXIMO, " +
+                "ISOLAMENTO=RESPEITADO, RESGATE_REMOTO=OPCIONAL_RARO, FOCO_IA=REFORCADO.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
             LogInfo("THE UNRELENTING: IMMERSION: WorldPace Bridge experimental; controle exato via _possessed:Actor e diagnosticos via VerboseImmersionLogs.");
             LoadImmersionArt();
@@ -2317,7 +2334,13 @@ namespace Arvak.TheUnrelenting
                 OverrideBehaviors = true,
                 Rescue = true,
                 StuckSeconds = 18f,
-                Verbose = false
+                Verbose = false,
+                LocalHops = true,
+                LocalChance = 12f,
+                LocalRadius = 5f,
+                MinimumTenure = 45f,
+                RemoteHops = false,
+                RemoteChance = 1f
             };
             try
             {
@@ -2329,6 +2352,12 @@ namespace Arvak.TheUnrelenting
                 opts.Rescue = (bool)group[CfgRescue].GetValue();
                 opts.StuckSeconds = Mathf.Clamp(Convert.ToSingle(group[CfgStuckSeconds].GetValue()), 10f, 90f);
                 opts.Verbose = (bool)group[CfgPursuitLogs].GetValue();
+                opts.LocalHops = (bool)group[CfgLocalHops].GetValue();
+                opts.LocalChance = Mathf.Clamp(Convert.ToSingle(group[CfgLocalChance].GetValue()), 0f, 100f);
+                opts.LocalRadius = Mathf.Clamp(Convert.ToSingle(group[CfgLocalRadius].GetValue()), 2f, 8f);
+                opts.MinimumTenure = Mathf.Clamp(Convert.ToSingle(group[CfgMinHostTenure].GetValue()), 10f, 180f);
+                opts.RemoteHops = (bool)group[CfgRemoteHops].GetValue();
+                opts.RemoteChance = Mathf.Clamp(Convert.ToSingle(group[CfgRemoteChance].GetValue()), 0f, 100f);
                 _pursuitOptionsWarned = false;
             }
             catch (Exception e)
@@ -2340,6 +2369,18 @@ namespace Arvak.TheUnrelenting
                         e.GetType().Name + ": " + e.Message);
                     _pursuitOptionsWarned = true;
                 }
+            }
+            // Presets comandam a politica da entidade; Personalizado usa os sliders.
+            // Isolamento por oceano permanece uma estrategia valida no Manual,
+            // Realista e Normal. Apenas Nightmare permite resgate remoto raro.
+            if (_quickPreset != 4)
+            {
+                opts.LocalHops = true;
+                opts.LocalChance = _quickPreset == 1 ? 7f : (_quickPreset == 3 ? 20f : 12f);
+                opts.LocalRadius = _quickPreset == 3 ? 7f : 5f;
+                opts.MinimumTenure = _quickPreset == 1 ? 65f : (_quickPreset == 3 ? 28f : 45f);
+                opts.RemoteHops = _quickPreset == 3;
+                opts.RemoteChance = _quickPreset == 3 ? 2f : 0f;
             }
             return opts;
         }
@@ -3308,7 +3349,9 @@ namespace Arvak.TheUnrelenting
                 _host.distanceToActorTile(_target) : float.MaxValue;
             _nextMotionTickAt = 0f;
             _nextMoveCommandAt = 0f;
-            _nextBehaviorOverrideAt = Time.unscaledTime + 3f;
+            _nextBehaviorOverrideAt = Time.unscaledTime + 0.8f;
+            _hostLastObservedTile = Usable(_host) ? (object)_host.current_tile : null;
+            _lastHostTileChangeAt = Time.unscaledTime;
         }
 
         private static float MotionTickSeconds(float distance, bool adaptive)
@@ -3359,35 +3402,93 @@ namespace Arvak.TheUnrelenting
             return chosen ?? fallback;
         }
 
+        // Recurso OPCIONAL e raro: so pode mudar de corpo longe apos uma
+        // imobilidade real, alem da falta de progresso em relacao ao alvo.
+        // Por padrao, nem sequer e tentado. Ilhas isoladas continuam seguras.
         private void TryRescueStalledPursuit(float distance, PursuitOptions opts)
         {
-            if (!opts.Rescue || distance <= 5f ||
-                Time.unscaledTime - _lastSignificantProgressAt < opts.StuckSeconds) return;
+            float now = Time.unscaledTime;
+            if (!opts.Rescue || !opts.RemoteHops || opts.RemoteChance <= 0f ||
+                distance <= 5f || _kiteBoostActive ||
+                now - _lastSignificantProgressAt < opts.StuckSeconds ||
+                now - _lastHostTileChangeAt < opts.StuckSeconds ||
+                now < _nextRemoteRescueRollAt) return;
+            // Uma oportunidade a cada 90 segundos, jamais por frame ou por scan.
+            _nextRemoteRescueRollAt = now + 90f;
+            float roll = (float)(_random.NextDouble() * 100.0);
+            if (opts.Verbose)
+                LogInfo("THE UNRELENTING: BODY-HOP RESGATE REMOTO SORTEIO! CHANCE=" +
+                    opts.RemoteChance.ToString("F1") + "% SORTEIO=" + roll.ToString("F2") +
+                    " DISTANCIA=" + distance.ToString("F1"));
+            if (roll >= opts.RemoteChance) return;
             Actor old = _host;
             Actor alternative = FindRescueHost(old, _target);
             if (alternative == null)
             {
-                if (Time.unscaledTime >= _nextRescueWarningAt)
+                if (now >= _nextRescueWarningAt)
                 {
-                    LogInfo("THE UNRELENTING: PURSUIT SEM CAMINHO / SEM RESGATE DISPONIVEL! " +
-                        "HOSPEDEIRO_TEMP_ID=" + old.GetHashCode() + " DISTANCIA=" +
-                        distance.ToString("F1") +
-                        " MOTIVO=POSSIVEL_AGUA_OBSTACULO_OU_ALVO_MOVEL; " +
-                        "nenhum outro hospedeiro mais proximo disponivel.");
-                    _nextRescueWarningAt = Time.unscaledTime + 25f;
+                    LogInfo("THE UNRELENTING: BODY-HOP RESGATE REMOTO SORTEADO SEM HOSPEDEIRO! " +
+                        "HOSPEDEIRO_TEMP_ID=" + old.GetHashCode());
+                    _nextRescueWarningAt = now + 90f;
                 }
-                // Nao bombardear a busca a cada 0.2s se faltam hospedeiros.
-                _lastSignificantProgressAt = Time.unscaledTime - opts.StuckSeconds + 10f;
                 return;
             }
             int oldId = old.GetHashCode();
             float newDistance = alternative.distanceToActorTile(_target);
             SetHost(alternative, true);
-            LogInfo("THE UNRELENTING: PURSUIT RESGATE POR TROCA DE CORPO! " +
+            LogInfo("THE UNRELENTING: BODY-HOP RESGATE REMOTO RARO! " +
                 "ANTERIOR_TEMP_ID=" + oldId + " NOVO_TEMP_ID=" + alternative.GetHashCode() +
                 " DISTANCIA_ANTERIOR=" + distance.ToString("F1") +
-                " NOVA_DISTANCIA=" + newDistance.ToString("F1") +
-                " POSSIVEL_SEPARACAO_POR_AGUA=True");
+                " NOVA_DISTANCIA=" + newDistance.ToString("F1"));
+        }
+
+        // Um encontro acontece quando outra criatura ENTRA no raio do atual
+        // hospedeiro. Falhar no sorteio nao concede repetidas tentativas com
+        // o mesmo vizinho enquanto ele continuar perto: precisa afastar-se e
+        // cruzar novamente. O corpo antigo volta a ser uma criatura comum.
+        private void TryNearbyBodyHop(List<Actor> alive, HashSet<Actor> cursed,
+            PursuitOptions opts)
+        {
+            if (!opts.LocalHops || opts.LocalChance <= 0f || !Usable(_host) ||
+                !Usable(_target))
+            {
+                _hostEncounteredActors.Clear();
+                return;
+            }
+            // Nao reiniciar o medidor de Anti-Kite nem abandonar um rush ativo.
+            if (_kiteBoostActive || _burstActive) return;
+            float now = Time.unscaledTime;
+            if (now < _nextHostChangeTime) return;
+            HashSet<Actor> presentlyNearby = new HashSet<Actor>();
+            foreach (Actor candidate in alive)
+            {
+                if (!IsAllowedHost(candidate, cursed, _host) ||
+                    object.ReferenceEquals(candidate, _target)) continue;
+                float d = candidate.distanceToActorTile(_host);
+                if (d < MinHostHopDistance || d > opts.LocalRadius) continue;
+                presentlyNearby.Add(candidate);
+                if (_hostEncounteredActors.Contains(candidate)) continue;
+                float roll = (float)(_random.NextDouble() * 100.0);
+                if (opts.Verbose)
+                    LogInfo("THE UNRELENTING: BODY-HOP ENCONTRO! HOSPEDEIRO=" +
+                        _host.GetHashCode() + " CANDIDATO=" + candidate.GetHashCode() +
+                        " DISTANCIA=" + d.ToString("F1") +
+                        " CHANCE=" + opts.LocalChance.ToString("F1") +
+                        "% SORTEIO=" + roll.ToString("F2"));
+                if (roll >= opts.LocalChance) continue;
+                Actor previous = _host;
+                int previousId = previous.GetHashCode();
+                SetHost(candidate, true);
+                LogInfo("THE UNRELENTING: BODY-HOP TROCA POR ENCONTRO! " +
+                    "ANTERIOR_TEMP_ID=" + previousId +
+                    " NOVO_TEMP_ID=" + candidate.GetHashCode() +
+                    " DISTANCIA_ENTRE_CORPOS=" + d.ToString("F1") +
+                    " FORMA_ANTERIOR=" + GetAssetId(previous) +
+                    " NOVA_FORMA=" + GetAssetId(candidate));
+                return;
+            }
+            _hostEncounteredActors.Clear();
+            foreach (Actor near in presentlyNearby) _hostEncounteredActors.Add(near);
         }
 
         // Apenas dois Actors sao avaliados frequentemente. O scan global,
@@ -3403,6 +3504,11 @@ namespace Arvak.TheUnrelenting
             _nextMotionTickAt = now + MotionTickSeconds(distance, opts.Adaptive);
             if (!object.ReferenceEquals(_trackedHost, _host) ||
                 !object.ReferenceEquals(_trackedTarget, _target)) ResetPursuitProgress();
+            if (!object.ReferenceEquals(_hostLastObservedTile, (object)_host.current_tile))
+            {
+                _hostLastObservedTile = _host.current_tile;
+                _lastHostTileChangeAt = now;
+            }
             if (distance < _bestTrackedDistance - 1.0f)
             {
                 _bestTrackedDistance = distance;
@@ -3492,14 +3598,18 @@ namespace Arvak.TheUnrelenting
             UpdateAntiKite(now, distance);
             UpdatePresenceCue();
 
-            // Neutraliza tarefas normais (incluindo sono) periodicamente, mas
-            // NAO a cada frame, evitando resetar todo o pathfinding constantemente.
+            // Durante a possessao, o host nao deve gastar segundos preciosos
+            // dormindo, fugindo ou cuidando de sua rotina. O jogo ainda possui
+            // IA nativa; revalidar a navegacao sem mutar assets globais.
+            // Nao prometer supressao absoluta de todos os jobs nesta API.
             if (opts.OverrideBehaviors && now >= _nextBehaviorOverrideAt)
             {
                 _host.cancelAllBeh();
-                _nextBehaviorOverrideAt = now + 4.5f;
+                _nextBehaviorOverrideAt = now + 1.35f;
+                // Retomar perseguicao IMEDIATAMENTE apos cancelar flee/sleep.
+                _nextMoveCommandAt = 0f;
                 if (opts.Verbose)
-                    LogInfo("THE UNRELENTING: PURSUIT ROTINA NORMAL INTERROMPIDA! " +
+                    LogInfo("THE UNRELENTING: PURSUIT FOCO REFORCADO! " +
                         "HOSPEDEIRO_TEMP_ID=" + _host.GetHashCode());
             }
             // Verificacoes de proximidade podem ser muito frequentes; nao
@@ -3542,7 +3652,11 @@ namespace Arvak.TheUnrelenting
             _burstCleanupWarned = false;
             _nextBurstCheckAt = Time.unscaledTime + RandomSeconds(FirstBurstCheckMin, FirstBurstCheckMax);
             ApplyTemporaryTraits(_host, _currentSpeed);
-            _nextHostChangeTime = Time.unscaledTime + (isChange ? HostChangeInterval : FirstHostChangeAfter);
+            // A entidade fica neste corpo por um periodo minimo. Depois disso
+            // pode trocar SOMENTE cruzando com outra criatura proxima.
+            _nextHostChangeTime = Time.unscaledTime + ReadPursuitOptions().MinimumTenure;
+            _hostEncounteredActors.Clear();
+            _nextRemoteRescueRollAt = Time.unscaledTime + 90f;
             _lastProgressTime = Time.unscaledTime;
             _lastDistance = _target != null ? _host.distanceToActorTile(_target) : 0f;
             ResetPursuitProgress();
@@ -3587,6 +3701,10 @@ namespace Arvak.TheUnrelenting
             _trackedTarget = null;
             _nextMotionTickAt = 0f;
             _nextMoveCommandAt = 0f;
+            _hostEncounteredActors.Clear();
+            _hostLastObservedTile = null;
+            _lastHostTileChangeAt = 0f;
+            _nextRemoteRescueRollAt = 0f;
         }
 
         private void ResetForWorld()
@@ -3673,6 +3791,10 @@ namespace Arvak.TheUnrelenting
             _bestTrackedDistance = float.MaxValue;
             _nextRescueWarningAt = 0f;
             _pursuitOptionsWarned = false;
+            _hostEncounteredActors.Clear();
+            _hostLastObservedTile = null;
+            _lastHostTileChangeAt = 0f;
+            _nextRemoteRescueRollAt = 0f;
         }
 
         private void Update()
@@ -3822,32 +3944,10 @@ namespace Arvak.TheUnrelenting
                     SetHost(chosen, false);
                 }
 
-                if (EnableHostHopping && Time.unscaledTime >= _nextHostChangeTime)
-                {
-                    // Nao interromper uma corrida de castigo no meio nem
-                    // perder o contador antes de completar os 30s de provocacao.
-                    bool waitForKite = _kiteBoostActive;
-                    if (!waitForKite && _antiKiteOptions.Enabled && _kiteNearSince >= 0f &&
-                        object.ReferenceEquals(_kiteHost, _host) &&
-                        object.ReferenceEquals(_kiteTarget, _target) && Usable(_host) &&
-                        Usable(_target) && _host.distanceToActorTile(_target) <= _antiKiteOptions.Radius)
-                    {
-                        float elapsedClose = Time.unscaledTime - _kiteNearSince;
-                        waitForKite = elapsedClose < _antiKiteOptions.Seconds + 5f;
-                    }
-                    if (waitForKite)
-                    {
-                        _nextHostChangeTime = Time.unscaledTime + 2f;
-                    }
-                    else
-                    {
-                        Actor newHost = PickHost(alive, current, _target, _host);
-                        if (newHost != null && !object.ReferenceEquals(newHost, _host))
-                            SetHost(newHost, true);
-                        else
-                            _nextHostChangeTime = Time.unscaledTime + 10f;
-                    }
-                }
+                // Troca de corpo APENAS por encontro local, nunca por um
+                // temporizador que escolhe candidatos a dezenas de tiles.
+                // Um oceano isolando a vitima continua sendo uma defesa valida.
+                TryNearbyBodyHop(alive, current, ReadPursuitOptions());
 
                 // O loop global permanece a cada 2s; movimento e contato
                 // sao atualizados com intervalos adaptativos independentes.
