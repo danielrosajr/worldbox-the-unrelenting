@@ -275,7 +275,7 @@ The fullscreen visual jumpscare and its sound remain opt-in. Game tests of this 
 Commit: `fix: detect Worldfall possession through WorldPace actor reference`
 
 
-## v0.13.5 — Silent Warnings (sons enviados pelo usuario)
+## v0.13.6 — Silent Warnings (sons enviados pelo usuario)
 
 - `Audio/presence.wav`: som sutil `sound_cue_near_entity.wav`.
 - `Audio/whisper_1.wav`: sussurros `HORROR SOUND EFFECT 3 - Whispers`.
@@ -292,3 +292,12 @@ Commit: `fix: detect Worldfall possession through WorldPace actor reference`
 - Commit sugerido: `feat: add randomized quiet horror cues and safe optional music ducking`.
 
 - PREVIEW: `Immersion > AudioPreviewIndex` (0=cue, 1=whisper1, 2=whisper2, 3=growl, 4=death scream) e `PreviewAudioOnce`. Toggle OFF/ON toca uma unica vez mesmo sem controlar Haunted, permitindo testar FMOD antes do Worldfall.
+
+
+## v0.13.6 - Immersion Fixes
+- Jumpscare: high-priority Screen Space Overlay Canvas above Worldfall 3D death screen, OnGUI fallback. WorldPace control verification still mandatory on real death.
+- Visual-only PreviewJumpscareOnce to verify overlay without killing a character.
+- Repeatable sound preview: fast 0.2s polling, auto reset of preview switch, additional AudioPreviewTrigger slider.
+- Music fade: MusicDuckingPercent up to 98% (default 90% for new configs), MusicFadeSeconds 0.5-12s. Controls FMOD music bus, and clearly identified Unity AudioSource music sources; restores volumes when safe.
+- Audio playback, 3D overlay and music behavior require in-game validation; do not use important saves for testing.
+- Commit: fix: overlay Worldfall death jumpscare and improve music and audio previews

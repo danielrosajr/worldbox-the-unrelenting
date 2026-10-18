@@ -110,11 +110,19 @@
   "GrowlChancePercent": "Growl chance among cues (%)",
   "GrowlChancePercent Description": "Chance to select the growl after a cue was rolled and close range permits it; not a per-second chance.",
   "EnableMusicDucking": "Lower music near entity (experimental)",
-  "EnableMusicDucking Description": "Off by default. Attempts to lower only FMOD bus:/Music, if found, and restore afterwards; Worldfall may use separate music.",
+  "EnableMusicDucking Description": "When controlling a Haunted victim near the entity, fade down only identified music sources. Supports FMOD bus:/Music and identifiable Unity music AudioSources; restores them when safe. Off by default.",
   "MusicDuckingPercent": "Experimental music reduction (%)",
-  "MusicDuckingPercent Description": "Amount to reduce an identified music bus. Never changes Master or global volume.",
+  "MusicDuckingPercent Description": "Percentage of music reduction; 90% makes music about one tenth of its previous volume, with smooth fade in/out.",
   "AudioPreviewIndex": "Sound to preview (0-4)",
   "AudioPreviewIndex Description": "0=cue, 1=whisper A, 2=whisper B, 3=growl, 4=death scream. Does not show jumpscare image.",
   "PreviewAudioOnce": "Play one audio preview",
-  "PreviewAudioOnce Description": "Toggle on to play one WAV independent of Worldfall. Toggle off and on to repeat. Use low volume."
+  "PreviewAudioOnce Description": "Play the selected sound once. Automatically re-arms; move AudioPreviewTrigger for reliable repeated tests if the switch UI has not refreshed.",
+  "MusicFadeSeconds": "Music fade duration (seconds)",
+  "MusicFadeSeconds Description": "Fade music gradually while a controlled Haunted victim is near the entity, then restore it smoothly. Music only, never master audio.",
+  "JumpscareDurationSeconds": "Death image duration (seconds)",
+  "JumpscareDurationSeconds Description": "How long the death image is shown, above the Worldfall 3D death screen if Unity UI is available.",
+  "AudioPreviewTrigger": "Replay audio preview (move slider)",
+  "AudioPreviewTrigger Description": "Move this slider to a different number to play the selected preview again. Also works when PreviewAudioOnce is already enabled.",
+  "PreviewJumpscareOnce": "Preview death image once (no sound)",
+  "PreviewJumpscareOnce Description": "Shows the full-screen horror image for testing 2D/Worldfall 3D overlays without dying. Switch automatically resets."
 }

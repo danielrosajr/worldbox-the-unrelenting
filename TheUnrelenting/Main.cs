@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Arvak.TheUnrelenting
 {
-    // v0.13.5 - Silent Warnings: WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
+    // v0.13.6 - Immersion Fixes: WorldPace possession bridge (experimental): heranca apos execucao da entidade, apenas com vinculo genealogico comprovado. As tres traits compartilham a mesma entidade.
     // "Troca de corpo" NAO modifica a especie ou o sprite de um unico Actor:
     // a entidade assume temporariamente OUTRA criatura existente. O antigo corpo
     // recupera as traits que o mod adicionou e volta a ser uma unidade comum.
@@ -629,6 +629,10 @@ namespace Arvak.TheUnrelenting
             public float DuckMusicPercent;
             public bool AudioPreview;
             public int AudioPreviewIndex;
+            public int AudioPreviewTrigger;
+            public bool PreviewJumpscare;
+            public float JumpscareDuration;
+            public float MusicFadeSeconds;
         }
         private ImmersionOptions _immersion;
         private bool _immersionConfigWarned;
@@ -644,6 +648,24 @@ namespace Arvak.TheUnrelenting
         private float _originalMusicVolume;
         private float _nextMusicErrorLogAt;
         private bool _previewAudioWasEnabled;
+        private int _lastAudioPreviewIndex = -1;
+        private int _lastAudioPreviewTrigger;
+        private bool _previewJumpscareWasEnabled;
+        private float _immersionPreviewPollClock;
+        private bool _canvasErrorLogged;
+        private GameObject _jumpscareCanvasRoot;
+        private bool _jumpscareCanvasVisible;
+        private bool _musicFadeWanted;
+        private float _musicCurrentVolume;
+        private float _nextUnityMusicProbeAt;
+        private readonly List<MusicSourceHandle> _unityMusicSources = new List<MusicSourceHandle>();
+
+        private class MusicSourceHandle
+        {
+            public UnityEngine.Object Source;
+            public PropertyInfo Volume;
+            public float OriginalVolume;
+        }
         private Texture2D _jumpscareTexture;
         private float _jumpscareUntil;
         private int _jumpscareCount;
@@ -666,8 +688,10 @@ namespace Arvak.TheUnrelenting
                 SoundVolume = 20f, DiagnosticHud = false, Verbose = false,
                 PresenceChance = 25f, PresenceRetry = 14f, PresenceDuration = 8f,
                 PresenceRadius = 12f, RareGrowl = true, GrowlChance = 8f,
-                DuckMusic = false, DuckMusicPercent = 60f,
-                AudioPreview = false, AudioPreviewIndex = 0
+                DuckMusic = false, DuckMusicPercent = 90f,
+                AudioPreview = false, AudioPreviewIndex = 0,
+                AudioPreviewTrigger = 0, PreviewJumpscare = false,
+                JumpscareDuration = 2.0f, MusicFadeSeconds = 4.0f
             };
             try
             {
@@ -688,9 +712,13 @@ namespace Arvak.TheUnrelenting
                 try { o.RareGrowl = (bool)g["EnableRareGrowl"].GetValue(); } catch { }
                 try { o.GrowlChance = Mathf.Clamp(Convert.ToSingle(g["GrowlChancePercent"].GetValue()), 0f, 30f); } catch { }
                 try { o.DuckMusic = (bool)g["EnableMusicDucking"].GetValue(); } catch { }
-                try { o.DuckMusicPercent = Mathf.Clamp(Convert.ToSingle(g["MusicDuckingPercent"].GetValue()), 0f, 85f); } catch { }
+                try { o.DuckMusicPercent = Mathf.Clamp(Convert.ToSingle(g["MusicDuckingPercent"].GetValue()), 0f, 98f); } catch { }
                 try { o.AudioPreview = (bool)g["PreviewAudioOnce"].GetValue(); } catch { }
                 try { o.AudioPreviewIndex = Mathf.Clamp(Mathf.RoundToInt(Convert.ToSingle(g["AudioPreviewIndex"].GetValue())), 0, 4); } catch { }
+                try { o.AudioPreviewTrigger = Mathf.Clamp(Mathf.RoundToInt(Convert.ToSingle(g["AudioPreviewTrigger"].GetValue())), 0, 100); } catch { }
+                try { o.PreviewJumpscare = (bool)g["PreviewJumpscareOnce"].GetValue(); } catch { }
+                try { o.JumpscareDuration = Mathf.Clamp(Convert.ToSingle(g["JumpscareDurationSeconds"].GetValue()), 0.8f, 4f); } catch { }
+                try { o.MusicFadeSeconds = Mathf.Clamp(Convert.ToSingle(g["MusicFadeSeconds"].GetValue()), 0.5f, 12f); } catch { }
                 _immersionConfigWarned = false;
             }
             catch (Exception e)
@@ -1304,23 +1332,59 @@ namespace Arvak.TheUnrelenting
             }
         }
 
-        // Teste isolado do FMOD: nao depende de Worldfall, Haunted ou proximidade.
-        // Toggle OFF -> ON para ouvir novamente; nunca toca em loop.
+        // Config nativa NML: SetValue(object, bool) permite rearmar o botao
+        // entre atualizacoes sem exigir que o usuario espere dois segundos.
+        private bool ResetPreviewSwitch(string id)
+        {
+            try
+            {
+                ModConfig config = GetConfig();
+                if (config == null) return false;
+                config[ImmersionGroup][id].SetValue(false, true);
+                return true;
+            }
+            catch (Exception e)
+            {
+                if (_immersion.Verbose)
+                    LogWarning("THE UNRELENTING: IMMERSION PREVIEW REARME FALHOU! ITEM=" + id + " ERRO=" + e.Message);
+                return false;
+            }
+        }
+
+        // Tres formas de repetir: ligar o switch (desarma automaticamente),
+        // mudar o indice com o switch ligado ou mover o slider de disparo.
         private void UpdateAudioPreview()
         {
-            if (!_immersion.AudioPreview)
-            {
-                _previewAudioWasEnabled = false;
-                return;
-            }
-            if (_previewAudioWasEnabled) return;
-            _previewAudioWasEnabled = true;
+            bool switchedOn = _immersion.AudioPreview && !_previewAudioWasEnabled;
+            bool changedIndex = _immersion.AudioPreview &&
+                _lastAudioPreviewIndex >= 0 && _lastAudioPreviewIndex != _immersion.AudioPreviewIndex;
+            bool changedTrigger = _immersion.AudioPreviewTrigger != _lastAudioPreviewTrigger;
+            _lastAudioPreviewIndex = _immersion.AudioPreviewIndex;
+            _lastAudioPreviewTrigger = _immersion.AudioPreviewTrigger;
+            _previewAudioWasEnabled = _immersion.AudioPreview;
+            if (!switchedOn && !changedIndex && !changedTrigger) return;
             string[] files = { "presence.wav", "whisper_1.wav", "whisper_2.wav", "growl.wav", "death_sting.wav" };
             string file = files[_immersion.AudioPreviewIndex];
             float factor = file == "death_sting.wav" ? 0.65f : (file == "growl.wav" ? 0.40f : 0.55f);
             bool played = TryPlayWav(file, _immersion.SoundVolume / 100f * factor);
             LogInfo("THE UNRELENTING: IMMERSION TESTE AUDIO! ARQUIVO=" + file +
-                " SOM_REPRODUZIDO=" + played + " (desligue e religue PreviewAudioOnce para repetir)");
+                " SOM_REPRODUZIDO=" + played + " DISPARO=" + _immersion.AudioPreviewTrigger +
+                " (pode repetir pelo switch ou pelo slider AudioPreviewTrigger)");
+            if (_immersion.AudioPreview && ResetPreviewSwitch("PreviewAudioOnce"))
+                _previewAudioWasEnabled = false;
+        }
+
+        private void UpdateJumpscarePreview()
+        {
+            bool requested = _immersion.PreviewJumpscare && !_previewJumpscareWasEnabled;
+            _previewJumpscareWasEnabled = _immersion.PreviewJumpscare;
+            if (!requested) return;
+            _jumpscareUntil = Time.unscaledTime + _immersion.JumpscareDuration;
+            bool overlay = EnsureJumpscareOverlay();
+            SetJumpscareOverlayVisible(overlay);
+            LogInfo("THE UNRELENTING: IMMERSION TESTE VISUAL! CANVAS_3D=" + overlay +
+                " DURACAO=" + _immersion.JumpscareDuration.ToString("F1") + "s");
+            if (ResetPreviewSwitch("PreviewJumpscareOnce")) _previewJumpscareWasEnabled = false;
         }
 
         private void CleanPlayedSounds()
@@ -1339,9 +1403,8 @@ namespace Arvak.TheUnrelenting
             }
         }
 
-        // Experimentacao isolada: reduz SOMENTE um barramento de musica FMOD
-        // identificado como bus:/Music (nunca master ou volume global).
-        // Worldfall pode usar outro barramento; nesse caso nao fazemos nada.
+        // Musica: FMOD bus:/Music e fontes Unity AudioSource identificadas
+        // ESTRITAMENTE como musica (nao toca SFX, voz nem master).
         private bool TryReadMusicBus(out object bus, out float volume)
         {
             bus = null;
@@ -1394,48 +1457,167 @@ namespace Arvak.TheUnrelenting
             catch { return false; }
         }
 
+        private static bool IsClearlyMusic(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            string n = name.ToLowerInvariant();
+            return n.Contains("music") || n.Contains("bgm") || n.Contains("soundtrack");
+        }
+
+        private void DiscoverUnityMusicSources(float now)
+        {
+            if (now < _nextUnityMusicProbeAt) return;
+            _nextUnityMusicProbeAt = now + 3f;
+            try
+            {
+                Type audioType = null;
+                foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    audioType = a.GetType("UnityEngine.AudioSource", false);
+                    if (audioType != null) break;
+                }
+                if (audioType == null) return;
+                PropertyInfo volume = audioType.GetProperty("volume");
+                PropertyInfo clipProp = audioType.GetProperty("clip");
+                if (volume == null || clipProp == null) return;
+                UnityEngine.Object[] sources = UnityEngine.Object.FindObjectsOfType(audioType);
+                if (sources == null) return;
+                foreach (UnityEngine.Object source in sources)
+                {
+                    if (source == null) continue;
+                    bool tracked = false;
+                    foreach (MusicSourceHandle item in _unityMusicSources)
+                        if (object.ReferenceEquals(item.Source, source)) { tracked = true; break; }
+                    if (tracked) continue;
+                    object clip = clipProp.GetValue(source, null);
+                    string clipName = clip is UnityEngine.Object ? ((UnityEngine.Object)clip).name : "";
+                    // Requer identificacao clara por nome do objeto OU do clip.
+                    if (!IsClearlyMusic(source.name) && !IsClearlyMusic(clipName)) continue;
+                    float original = Convert.ToSingle(volume.GetValue(source, null));
+                    if (float.IsNaN(original) || original < 0f) continue;
+                    _unityMusicSources.Add(new MusicSourceHandle
+                    {
+                        Source = source, Volume = volume, OriginalVolume = original
+                    });
+                    LogInfo("THE UNRELENTING: IMMERSION MUSICA UNITY DETECTADA! FONTE=" +
+                        source.name + " CLIP=" + clipName + " VOLUME_ORIGINAL=" + original.ToString("F2"));
+                }
+            }
+            catch (Exception e)
+            {
+                if (_immersion.Verbose && now >= _nextMusicErrorLogAt)
+                {
+                    _nextMusicErrorLogAt = now + 30f;
+                    LogWarning("THE UNRELENTING: IMMERSION MUSICA UNITY PROBE INDISPONIVEL: " + e.Message);
+                }
+            }
+        }
+
+        // Desligar o efeito solicita fade-out; somente reset/mudanca de mundo
+        // restaura instantaneamente e descarta as referencias.
         private void RestoreMusicDucking()
         {
-            if (!_musicDucked) return;
-            bool ok = SetBusMusicVolume(_musicBus, _originalMusicVolume);
-            if (_immersion.Verbose)
-                LogInfo("THE UNRELENTING: IMMERSION MUSICA RESTAURADA! RESULTADO=" + ok);
+            _musicFadeWanted = false;
+        }
+
+        private void RestoreMusicDuckingImmediately()
+        {
+            _musicFadeWanted = false;
+            if (_musicDucked) SetBusMusicVolume(_musicBus, _originalMusicVolume);
             _musicDucked = false;
             _musicBus = null;
+            for (int i = _unityMusicSources.Count - 1; i >= 0; i--)
+            {
+                MusicSourceHandle item = _unityMusicSources[i];
+                try { if (item.Source != null) item.Volume.SetValue(item.Source, item.OriginalVolume, null); }
+                catch { }
+            }
+            _unityMusicSources.Clear();
         }
 
         private void UpdateMusicDucking(bool controlledAndClose, float now)
         {
-            if (!_immersion.DuckMusic || !_immersion.PresenceCue || !controlledAndClose)
+            if (!_immersion.DuckMusic || !controlledAndClose)
             {
                 RestoreMusicDucking();
                 return;
             }
-            if (_musicDucked || now < _nextMusicProbeAt) return;
-            _nextMusicProbeAt = now + 30f;
-            object bus;
-            float original;
-            if (TryReadMusicBus(out bus, out original))
+            if (!_musicFadeWanted)
+                LogInfo("THE UNRELENTING: IMMERSION MUSICA TENSAO INICIADA! FADE=" +
+                    _immersion.MusicFadeSeconds.ToString("F1") + "s REDUCAO=" +
+                    _immersion.DuckMusicPercent.ToString("F0") + "%");
+            _musicFadeWanted = true;
+            if (!_musicDucked && now >= _nextMusicProbeAt)
             {
-                if (SetBusMusicVolume(bus, original * (1f - _immersion.DuckMusicPercent / 100f)))
+                _nextMusicProbeAt = now + 12f;
+                object bus;
+                float original;
+                if (TryReadMusicBus(out bus, out original))
                 {
                     _musicBus = bus;
                     _originalMusicVolume = original;
+                    _musicCurrentVolume = original;
                     _musicDucked = true;
-                    LogInfo("THE UNRELENTING: IMMERSION MUSICA ABAIXADA! BARRAMENTO=bus:/Music ORIGINAL=" +
-                        original.ToString("F2") + " REDUCAO=" + _immersion.DuckMusicPercent.ToString("F0") + "%");
+                    LogInfo("THE UNRELENTING: IMMERSION MUSICA FMOD ENCONTRADA! BARRAMENTO=bus:/Music ORIGINAL=" + original.ToString("F2"));
                 }
             }
-            else if (_immersion.Verbose && now >= _nextMusicErrorLogAt)
+            DiscoverUnityMusicSources(now);
+            if (!_musicDucked && _unityMusicSources.Count == 0 && _immersion.Verbose && now >= _nextMusicErrorLogAt)
             {
                 _nextMusicErrorLogAt = now + 30f;
-                LogInfo("THE UNRELENTING: IMMERSION MUSICA: bus:/Music NAO DISPONIVEL; SEM ALTERAR AUDIO GLOBAL.");
+                LogInfo("THE UNRELENTING: IMMERSION MUSICA SEM FONTE IDENTIFICADA! " +
+                    "Nao foi alterado o volume principal nem os efeitos do jogo.");
+            }
+        }
+
+        private void UpdateMusicFade()
+        {
+            if (!_musicDucked && _unityMusicSources.Count == 0) return;
+            float ratio = _musicFadeWanted && _immersion.DuckMusic ?
+                (1f - _immersion.DuckMusicPercent / 100f) : 1f;
+            float factor = Mathf.Clamp01(Time.unscaledDeltaTime /
+                Mathf.Max(0.5f, _immersion.MusicFadeSeconds));
+            bool done = true;
+            if (_musicDucked)
+            {
+                float target = _originalMusicVolume * ratio;
+                _musicCurrentVolume = Mathf.MoveTowards(_musicCurrentVolume, target,
+                    Mathf.Max(0.0005f, _originalMusicVolume) * factor);
+                if (Mathf.Abs(_musicCurrentVolume - target) > 0.001f) done = false;
+                if (!SetBusMusicVolume(_musicBus, _musicCurrentVolume))
+                {
+                    _musicDucked = false;
+                    _musicBus = null;
+                    if (_immersion.Verbose) LogWarning("THE UNRELENTING: IMMERSION MUSICA FMOD PERDIDA; NAO ALTERANDO MASTER.");
+                }
+            }
+            for (int i = _unityMusicSources.Count - 1; i >= 0; i--)
+            {
+                MusicSourceHandle item = _unityMusicSources[i];
+                try
+                {
+                    if (item.Source == null) { _unityMusicSources.RemoveAt(i); continue; }
+                    float old = Convert.ToSingle(item.Volume.GetValue(item.Source, null));
+                    float target = item.OriginalVolume * ratio;
+                    float next = Mathf.MoveTowards(old, target, Mathf.Max(0.0005f, item.OriginalVolume) * factor);
+                    item.Volume.SetValue(item.Source, next, null);
+                    if (Mathf.Abs(next - target) > 0.001f) done = false;
+                }
+                catch { _unityMusicSources.RemoveAt(i); }
+            }
+            if (!_musicFadeWanted && done)
+            {
+                if (_musicDucked) SetBusMusicVolume(_musicBus, _originalMusicVolume);
+                _musicDucked = false;
+                _musicBus = null;
+                _unityMusicSources.Clear();
+                if (_immersion.Verbose) LogInfo("THE UNRELENTING: IMMERSION MUSICA RESTAURADA GRADUALMENTE!");
             }
         }
 
         private void UpdatePresenceCue()
         {
-            if (!_immersion.PresenceCue || !Usable(_host) || !Usable(_target))
+            if ((!_immersion.PresenceCue && !_immersion.DuckMusic) || !Usable(_host) || !Usable(_target))
             {
                 RestoreMusicDucking();
                 _presenceTrackedTarget = null;
@@ -1459,7 +1641,8 @@ namespace Arvak.TheUnrelenting
                 _nextPresenceSoundAt = now + _immersion.PresenceDuration;
                 return;
             }
-            if (now - _presenceNearSince < _immersion.PresenceDuration) return;
+            // A musica pode comecar a descer logo ao entrar no raio.
+            // O som discreto continua exigindo o tempo minimo de proximidade.
             // Checagem de controle com intervalo para evitar reflexao a cada frame.
             if (now < _nextPresenceControllerProbeAt) return;
             _nextPresenceControllerProbeAt = now + 2f;
@@ -1470,7 +1653,8 @@ namespace Arvak.TheUnrelenting
                 if (_immersion.Verbose) ReportUnverifiedControl(_target);
                 return;
             }
-            if (now < _nextPresenceSoundAt || _kiteBoostActive) return;
+            if (!_immersion.PresenceCue || now - _presenceNearSince < _immersion.PresenceDuration ||
+                now < _nextPresenceSoundAt || _kiteBoostActive) return;
             _nextPresenceSoundAt = now + _immersion.PresenceRetry;
             float roll = (float)(_random.NextDouble() * 100d);
             if (roll >= _immersion.PresenceChance)
@@ -1502,6 +1686,101 @@ namespace Arvak.TheUnrelenting
                     " TOTAL=" + _presenceCueCount);
         }
 
+        private static Type FindLoadedType(string fullName)
+        {
+            foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type t = a.GetType(fullName, false);
+                if (t != null) return t;
+            }
+            return null;
+        }
+
+        // Unity Screen Space Overlay: desenha por cima da camera 3D e da
+        // maioria das interfaces de morte do Worldfall (sortingOrder alto).
+        // Por reflexao: evita exigir UnityEngine.UI como referencia em NML.
+        private bool EnsureJumpscareOverlay()
+        {
+            if (_jumpscareCanvasRoot != null) return true;
+            if (_jumpscareTexture == null) return false;
+            GameObject root = null;
+            try
+            {
+                Type canvasType = FindLoadedType("UnityEngine.Canvas");
+                Type rawType = FindLoadedType("UnityEngine.UI.RawImage");
+                Type rectType = FindLoadedType("UnityEngine.RectTransform");
+                if (canvasType == null || rawType == null || rectType == null)
+                    throw new InvalidOperationException("Unity UI Canvas / RawImage nao encontrado");
+                root = new GameObject("TheUnrelenting_DeathOverlay_3D", new Type[] { rectType });
+                object canvas = root.AddComponent(canvasType);
+                PropertyInfo renderMode = canvasType.GetProperty("renderMode");
+                PropertyInfo sortingOrder = canvasType.GetProperty("sortingOrder");
+                PropertyInfo overrideSorting = canvasType.GetProperty("overrideSorting");
+                if (renderMode == null || sortingOrder == null)
+                    throw new InvalidOperationException("Canvas nao oferece renderMode/sortingOrder");
+                // RenderMode.ScreenSpaceOverlay = 0
+                renderMode.SetValue(canvas, Enum.ToObject(renderMode.PropertyType, 0), null);
+                sortingOrder.SetValue(canvas, 32760, null);
+                if (overrideSorting != null) overrideSorting.SetValue(canvas, true, null);
+                GameObject image = new GameObject("TheUnrelenting_JumpscareImage", new Type[] { rectType });
+                image.transform.SetParent(root.transform, false);
+                object raw = image.AddComponent(rawType);
+                PropertyInfo texture = rawType.GetProperty("texture");
+                if (texture == null) throw new InvalidOperationException("RawImage.texture indisponivel");
+                texture.SetValue(raw, _jumpscareTexture, null);
+                PropertyInfo raycastTarget = rawType.GetProperty("raycastTarget");
+                if (raycastTarget != null) raycastTarget.SetValue(raw, false, null);
+                Component rect = image.GetComponent(rectType);
+                if (rect == null) throw new InvalidOperationException("RectTransform indisponivel");
+                Type rt = rect.GetType();
+                rt.GetProperty("anchorMin").SetValue(rect, Vector2.zero, null);
+                rt.GetProperty("anchorMax").SetValue(rect, Vector2.one, null);
+                rt.GetProperty("offsetMin").SetValue(rect, Vector2.zero, null);
+                rt.GetProperty("offsetMax").SetValue(rect, Vector2.zero, null);
+                root.SetActive(false);
+                // A interface 3D pode trocar de cena ao morrer. Manter apenas este
+                // Canvas vivo ate o efeito acabar; ResetForWorld/OnDisable o limpam.
+                UnityEngine.Object.DontDestroyOnLoad(root);
+                _jumpscareCanvasRoot = root;
+                _jumpscareCanvasVisible = false;
+                LogInfo("THE UNRELENTING: IMMERSION JUMPSCARE CANVAS 3D CRIADO! RENDER=SCREEN_SPACE_OVERLAY ORDEM=32760");
+                return true;
+            }
+            catch (Exception e)
+            {
+                if (root != null) UnityEngine.Object.Destroy(root);
+                if (!_canvasErrorLogged)
+                {
+                    LogWarning("THE UNRELENTING: IMMERSION JUMPSCARE CANVAS 3D INDISPONIVEL, FALLBACK ONGUI! " + e.Message);
+                    _canvasErrorLogged = true;
+                }
+                return false;
+            }
+        }
+
+        private void SetJumpscareOverlayVisible(bool visible)
+        {
+            if (_jumpscareCanvasRoot == null) { _jumpscareCanvasVisible = false; return; }
+            if (_jumpscareCanvasVisible == visible) return;
+            _jumpscareCanvasRoot.SetActive(visible);
+            if (visible) _jumpscareCanvasRoot.transform.SetAsLastSibling();
+            _jumpscareCanvasVisible = visible;
+        }
+
+        private void UpdateJumpscareOverlay()
+        {
+            bool visible = _jumpscareTexture != null && Time.unscaledTime < _jumpscareUntil;
+            if (!visible) { SetJumpscareOverlayVisible(false); return; }
+            if (EnsureJumpscareOverlay()) SetJumpscareOverlayVisible(true);
+        }
+
+        private void DestroyJumpscareOverlay()
+        {
+            if (_jumpscareCanvasRoot != null) UnityEngine.Object.Destroy(_jumpscareCanvasRoot);
+            _jumpscareCanvasRoot = null;
+            _jumpscareCanvasVisible = false;
+        }
+
         private void MaybeStartDeathJumpscare(Actor victim, bool confirmedControl)
         {
             if (!_immersion.Jumpscare || !confirmedControl || _jumpscareTexture == null) return;
@@ -1512,26 +1791,30 @@ namespace Arvak.TheUnrelenting
                 return;
             }
             _jumpscareCount++;
-            _jumpscareUntil = Time.unscaledTime + 1.25f;
+            _jumpscareUntil = Time.unscaledTime + _immersion.JumpscareDuration;
+            bool canvas3D = EnsureJumpscareOverlay();
+            SetJumpscareOverlayVisible(canvas3D);
             // Distorted scream normalizado: impedir estourar os ouvidos.
             bool played = TryPlayWav("death_sting.wav", _immersion.SoundVolume / 100f * 0.65f);
             LogInfo("THE UNRELENTING: IMMERSION JUMPSCARE EXIBIDO! VITIMA_TEMP_ID=" + victim.GetHashCode() +
-                " SOM_REPRODUZIDO=" + played + " TOTAL=" + _jumpscareCount);
+                " SOM_REPRODUZIDO=" + played + " CANVAS_3D=" + canvas3D + " TOTAL=" + _jumpscareCount);
         }
 
         private void OnDisable()
         {
-            RestoreMusicDucking();
+            RestoreMusicDuckingImmediately();
+            DestroyJumpscareOverlay();
         }
 
         private void OnGUI()
         {
-            if (_jumpscareTexture != null && Time.unscaledTime < _jumpscareUntil)
+            if (_jumpscareTexture != null && Time.unscaledTime < _jumpscareUntil && !_jumpscareCanvasVisible)
             {
                 GUI.depth = -999;
                 GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), _jumpscareTexture, ScaleMode.ScaleAndCrop);
                 return;
             }
+            if (Time.unscaledTime < _jumpscareUntil) return;
             if (!_immersion.DiagnosticHud || World.world == null) return;
             GUI.depth = -998;
             GUI.Box(new Rect(10, 10, 315, 139), "THE UNRELENTING / DIAGNOSTICS");
@@ -1601,7 +1884,7 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.13.5 SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.13.6 IMMERSION FIXES + SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
             LogInfo("THE UNRELENTING: IMMERSION: WorldPace Bridge experimental; controle exato via _possessed:Actor e diagnosticos via VerboseImmersionLogs.");
             LoadImmersionArt();
@@ -3058,13 +3341,19 @@ namespace Arvak.TheUnrelenting
 
         private void ResetForWorld()
         {
-            RestoreMusicDucking();
+            RestoreMusicDuckingImmediately();
+            DestroyJumpscareOverlay();
             _presenceTrackedTarget = null;
             _presenceNearSince = -1f;
             _nextPresenceSoundAt = 0f;
             _nextPresenceControllerProbeAt = 0f;
             _nextMusicProbeAt = 0f;
             _previewAudioWasEnabled = false;
+            _previewJumpscareWasEnabled = false;
+            _lastAudioPreviewIndex = -1;
+            _lastAudioPreviewTrigger = 0;
+            _immersionPreviewPollClock = 0f;
+            _nextUnityMusicProbeAt = 0f;
             _jumpscareUntil = 0f;
             _lastWitnessSummary = null;
             _lastTraumaSummary = null;
@@ -3134,6 +3423,18 @@ namespace Arvak.TheUnrelenting
 
         private void Update()
         {
+            // Previews: 0.2s em vez de 2s, para nao perder toggles rapidos.
+            _immersionPreviewPollClock += Time.unscaledDeltaTime;
+            if (_immersionPreviewPollClock >= 0.2f)
+            {
+                _immersionPreviewPollClock = 0f;
+                _immersion = ReadImmersionOptions();
+                UpdateAudioPreview();
+                UpdateJumpscarePreview();
+                CleanPlayedSounds();
+            }
+            UpdateJumpscareOverlay();
+            UpdateMusicFade();
             _scanClock += Time.unscaledDeltaTime;
             if (_scanClock < ScanInterval)
             {
@@ -3172,10 +3473,8 @@ namespace Arvak.TheUnrelenting
                     if (HasAnyHaunted(actor)) current.Add(actor);
                 }
 
-                _immersion = ReadImmersionOptions();
-                if (!_immersion.PresenceCue || !Usable(_host) || !Usable(_target)) RestoreMusicDucking();
-                UpdateAudioPreview();
-                CleanPlayedSounds();
+                if ((!_immersion.PresenceCue && !_immersion.DuckMusic) ||
+                    !Usable(_host) || !Usable(_target)) RestoreMusicDucking();
                 _antiKiteOptions = ReadAntiKiteOptions();
                 if (!_antiKiteOptions.Enabled && _kiteBoostActive) EndPunishingRush();
 

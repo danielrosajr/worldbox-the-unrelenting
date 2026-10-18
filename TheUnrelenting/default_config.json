@@ -301,9 +301,9 @@
     {
       "Id": "MusicDuckingPercent",
       "Type": "SLIDER",
-      "FloatVal": 60.0,
+      "FloatVal": 90.0,
       "MinFloatVal": 0.0,
-      "MaxFloatVal": 85.0
+      "MaxFloatVal": 98.0
     },
     {
       "Id": "AudioPreviewIndex",
@@ -314,6 +314,32 @@
     },
     {
       "Id": "PreviewAudioOnce",
+      "Type": "SWITCH",
+      "BoolVal": false
+    },
+    {
+      "Id": "MusicFadeSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 4.0,
+      "MinFloatVal": 0.5,
+      "MaxFloatVal": 12.0
+    },
+    {
+      "Id": "JumpscareDurationSeconds",
+      "Type": "SLIDER",
+      "FloatVal": 2.0,
+      "MinFloatVal": 0.8,
+      "MaxFloatVal": 4.0
+    },
+    {
+      "Id": "AudioPreviewTrigger",
+      "Type": "SLIDER",
+      "FloatVal": 0.0,
+      "MinFloatVal": 0.0,
+      "MaxFloatVal": 100.0
+    },
+    {
+      "Id": "PreviewJumpscareOnce",
       "Type": "SWITCH",
       "BoolVal": false
     }

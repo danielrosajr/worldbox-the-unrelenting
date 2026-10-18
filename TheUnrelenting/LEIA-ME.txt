@@ -1,4 +1,4 @@
-THE UNRELENTING v0.13.5 — CONTROLLED FURY
+THE UNRELENTING v0.13.6 — CONTROLLED FURY
 
 Atualize SUBSTITUINDO a pasta TheUnrelenting inteira pelo conteudo deste ZIP.
 
@@ -15,5 +15,14 @@ VERSAO EXPERIMENTAL. TESTE NUM MUNDO DESCARTAVEL.
 Rollback: v0.13.3.
 Commit GitHub: feat: make anti-kite bursts probabilistic and add rush trait icon
 
-v0.13.5 - Silent Warnings: 3 sons de proximidade enviados pelo usuario, growl raro, grito no jumpscare, controles de chance, som baixo e reducao opcional experimental de musica.
+v0.13.6 - Silent Warnings: 3 sons de proximidade enviados pelo usuario, growl raro, grito no jumpscare, controles de chance, som baixo e reducao opcional experimental de musica.
 Audio em mod apenas com direitos de uso adequados.
+
+
+## v0.13.6 - Immersion Fixes
+- Jumpscare: high-priority Screen Space Overlay Canvas above Worldfall 3D death screen, OnGUI fallback. WorldPace control verification still mandatory on real death.
+- Visual-only PreviewJumpscareOnce to verify overlay without killing a character.
+- Repeatable sound preview: fast 0.2s polling, auto reset of preview switch, additional AudioPreviewTrigger slider.
+- Music fade: MusicDuckingPercent up to 98% (default 90% for new configs), MusicFadeSeconds 0.5-12s. Controls FMOD music bus, and clearly identified Unity AudioSource music sources; restores volumes when safe.
+- Audio playback, 3D overlay and music behavior require in-game validation; do not use important saves for testing.
+- Commit: fix: overlay Worldfall death jumpscare and improve music and audio previews

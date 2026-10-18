@@ -110,11 +110,19 @@
   "GrowlChancePercent": "Chance de growl entre sons (%)",
   "GrowlChancePercent Description": "Chance de escolher a rosnada se um som foi sorteado e a distancia permitir. Nao e uma chance por segundo.",
   "EnableMusicDucking": "Reduzir musica perto da entidade (experimental)",
-  "EnableMusicDucking Description": "Desligado por padrao. Tenta reduzir apenas o barramento FMOD bus:/Music, se existir, restaurando depois; Worldfall pode usar trilha separada.",
+  "EnableMusicDucking Description": "Ao controlar um Haunted perto da entidade, abaixa gradualmente apenas fontes identificadas como musica (FMOD bus:/Music e AudioSources Unity de musica). Restaura depois; desligado por padrao.",
   "MusicDuckingPercent": "Reducao experimental de musica (%)",
-  "MusicDuckingPercent Description": "Percentual de reducao do barramento de musica identificado. Nunca altera barramento Master ou volume geral.",
+  "MusicDuckingPercent Description": "Reducao de musica. Com 90%, a musica fica perto de um decimo do volume anterior. Transicao gradual.",
   "AudioPreviewIndex": "Qual som testar (0-4)",
   "AudioPreviewIndex Description": "0=sinal, 1=sussurro A, 2=sussurro B, 3=rosnado, 4=grito da morte. Nao ativa a imagem.",
   "PreviewAudioOnce": "Tocar som de teste uma vez",
-  "PreviewAudioOnce Description": "Toque em ligar para reproduzir um WAV uma unica vez, independente do Worldfall. Desligue e ligue novamente para repetir. Teste com volume baixo."
+  "PreviewAudioOnce Description": "Reproduz o som selecionado uma vez e rearma automaticamente. Caso o switch nao atualize visualmente, mova AudioPreviewTrigger para repetir.",
+  "MusicFadeSeconds": "Tempo de transicao da musica (segundos)",
+  "MusicFadeSeconds Description": "Abaixa a musica gradualmente quando voce controla Haunted perto da entidade; restaura devagar ao sair. Nao mexe no volume geral.",
+  "JumpscareDurationSeconds": "Duracao da imagem de susto (segundos)",
+  "JumpscareDurationSeconds Description": "Tempo em que a imagem aparece por cima da tela de morte 3D do Worldfall, quando o Canvas Unity estiver disponivel.",
+  "AudioPreviewTrigger": "Repetir teste de audio (mover slider)",
+  "AudioPreviewTrigger Description": "Mude o numero do slider para tocar novamente o som selecionado. Funciona mesmo se o switch PreviewAudioOnce nao atualizar na tela.",
+  "PreviewJumpscareOnce": "Testar imagem de susto uma vez (sem som)",
+  "PreviewJumpscareOnce Description": "Mostra a imagem em tela cheia para testar as interfaces 2D e 3D sem precisar morrer. O switch e rearmado automaticamente."
 }
