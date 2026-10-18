@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.IO;
@@ -3320,7 +3320,7 @@ namespace Arvak.TheUnrelenting
                 if (around != null)
                 {
                     // Para mudanca de hospedeiro, escolher proximo ao antigo.
-                    if (d < MinHostHopDistance || d > MaxHostHopDistance) continue;
+                    if (d < MinHostHopDistance || d > _pursuitOptions.LocalRadius) continue;
                     nearCount++;
                     if (_random.Next(nearCount) == 0) near = a;
                 }
