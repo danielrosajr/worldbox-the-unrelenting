@@ -2121,7 +2121,7 @@ namespace Arvak.TheUnrelenting
             LogInfo("THE UNRELENTING: TRAIT HAUNTED REGISTRADA COM SUCESSO! ID=" + TraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: TRAUMA REGISTRADA! ID=" + TraumaTraitId);
             LogInfo("THE UNRELENTING: TRAIT HAUNTED: BLOODLINE REGISTRADA! ID=" + BloodlineTraitId);
-            LogInfo("THE UNRELENTING: V0.14.1 THE PATIENT HUNTER + DREAD MODES + SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
+            LogInfo("THE UNRELENTING: V0.14.1.2 COMPILE FIX + THE PATIENT HUNTER + DREAD MODES + SILENT WARNINGS + WORLDPACE BRIDGE + IMMERSION + BLOODLINE + TRAUMA + ANTI-KITE + PURSUIT ATIVOS.");
             LogInfo("THE UNRELENTING: BODY-HOP NOVA LOGICA! TROCA=ENCONTRO_PROXIMO, " +
                 "ISOLAMENTO=RESPEITADO, RESGATE_REMOTO=OPCIONAL_RARO, FOCO_IA=REFORCADO.");
             LogInfo("THE UNRELENTING: BLOODLINE: heranca apenas apos EXECUCAO PELA ENTIDADE, com parentesco comprovado; DESLIGADA POR PADRAO.");
@@ -3320,7 +3320,7 @@ namespace Arvak.TheUnrelenting
                 if (around != null)
                 {
                     // Para mudanca de hospedeiro, escolher proximo ao antigo.
-                    if (d < MinHostHopDistance || d > _pursuitOptions.LocalRadius) continue;
+                    if (d < MinHostHopDistance || d > ReadPursuitOptions().LocalRadius) continue;
                     nearCount++;
                     if (_random.Next(nearCount) == 0) near = a;
                 }
